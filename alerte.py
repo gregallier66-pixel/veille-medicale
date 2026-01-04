@@ -1,7 +1,7 @@
 import os
 import requests
 import smtplib
-from google import genai
+import google.generativeai as palmai # On revient a l'ancienne methode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -21,6 +21,7 @@ def fetch_pubmed_ids(query):
     except: return []
 
 def envoyer_veille():
+    # Vos spécialités
     query = "(gynecology[Title] OR obstetrics[Title] OR endocrinology[Title] OR 'general medicine'[Title]) AND (2024:2026[Date - Publication])"
     ids = fetch_pubmed_ids(query)
     
@@ -28,35 +29,26 @@ def envoyer_veille():
         print("Aucun article trouvé.")
         return
 
-    liens_html = "".join([f"<li><a href='https://pubmed.ncbi.nlm.nih.gov/{i}/'>Article PubMed {i}</a></li>" for i in ids])
+    liens_texte = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids])
 
-    client = genai.Client(api_key=GEMINI_KEY)
-    prompt = f"Tu es un expert médical. Analyse ces articles : {liens_html}. Pour chaque, donne en Français : Titre, Résumé court, Intérêt clinique pour la Gynéco/Endo/MG. Formate le tout proprement en HTML."
+    # CONFIGURATION IA (Ancienne methode stable)
+    palmai.configure(api_key=GEMINI_KEY)
+    model = palmai.GenerativeModel('gemini-1.5-flash')
+    
+    prompt = f"Tu es un expert médical. Analyse ces articles : {liens_texte}. Pour chaque, donne en Français : Titre, Résumé court, Intérêt clinique pour la Gynéco/Endo/MG. Termine par les liens."
     
     try:
-        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
-        contenu_ia = response.text.replace("```html", "").replace("```", "") # Nettoyage balises markdown
+        response = model.generate_content(prompt)
+        contenu_ia = response.text
     except Exception as e:
         contenu_ia = f"Erreur IA : {e}"
 
-    # Construction du mail HTML
-    msg = MIMEMultipart("alternative")
+    # Envoi du mail
+    msg = MIMEMultipart()
     msg['From'] = f"Veille Médicale <{EMAIL_SENDER}>"
     msg['To'] = EMAIL_RECEIVER
-    msg['Subject'] = "Focus Gynéco-Obs / Endo / MG"
-
-    html_body = f"""
-    <html>
-      <body>
-        <h2 style="color: #2e6c80;">Votre Veille Médicale Quotidienne</h2>
-        {contenu_ia}
-        <hr>
-        <p>Sources originales :</p>
-        <ul>{liens_html}</ul>
-      </body>
-    </html>
-    """
-    msg.attach(MIMEText(html_body, "html"))
+    msg['Subject'] = "Veille Gynéco / Endo / MG"
+    msg.attach(MIMEText(contenu_ia, "plain"))
 
     try:
         server = smtplib.SMTP("smtp-relay.brevo.com", 587)
@@ -64,10 +56,9 @@ def envoyer_veille():
         server.login(EMAIL_SENDER, EMAIL_PW)
         server.send_message(msg)
         server.quit()
-        print("✅ Email envoyé avec succès")
+        print("✅ Mail envoyé !")
     except Exception as e:
         print(f"❌ Erreur SMTP : {e}")
 
 if __name__ == "__main__":
     envoyer_veille()
-    
