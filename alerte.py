@@ -1,70 +1,97 @@
-import feedparser
+import os
 import requests
 import smtplib
 from google import genai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from fpdf import FPDF
 
 # --- CONFIGURATION ---
-GEMINI_KEY = "AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g"
-PUBMED_API_KEY = "17626ab73380b71515000371bdcee0c26308"
-
-# Identifiants Brevo
-SMTP_SERVER = "smtp-relay.brevo.com"
-SMTP_PORT = 587
-EMAIL_SENDER = "9f3e72001@smtp-brevo.com" 
-EMAIL_PW = "xsmtpsib-942e7bea4a7ea53de0dad558974e394749186937099494d653498395e8fd1f4a-o60i8GOCOhiQ3SPJ"      # Votre clé finissant par iQ3SPJ
+GEMINI_KEY = os.getenv("AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g")
+PUBMED_API_KEY = os.getenv("17626ab73380b71515000371bdcee0c26308")
+EMAIL_SENDER = os.getenv("9f3e72001@smtp-brevo.com")
+EMAIL_PW = os.getenv("xsmtpsib-942e7bea4a7ea53de0dad558974e394749186937099494d653498395e8fd1f4a-o60i8GOCOhiQ3SPJ")
 EMAIL_RECEIVER = "gregallier66@gmail.com"
 
-def fetch_pubmed_titles(query):
+def fetch_pubmed_ids(query):
     url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-    params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": 3, "api_key": PUBMED_API_KEY}
+    params = {
+        "db": "pubmed",
+        "term": query,
+        "retmode": "json",
+        "retmax": 5,
+        "api_key": PUBMED_API_KEY
+    }
     try:
         res = requests.get(url, params=params).json()
         return res.get("esearchresult", {}).get("idlist", [])
-    except:
-        return []
+    except: return []
+
+def generer_pdf(texte):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "Veille Medicale du Jour", ln=True, align='C')
+    pdf.ln(10)
+    
+    pdf.set_font("Arial", size=11)
+    # Nettoyage des caractères non-compatibles avec le format standard PDF
+    clean_text = texte.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 8, txt=clean_text)
+    pdf.output("veille_medicale.pdf")
 
 def envoyer_veille():
-    print("Demarrage de la veille...")
+    # Requête pour Gynéco-Obs, Endo et MG depuis 2024
+    query = "(gynecology[Title] OR obstetrics[Title] OR endocrinology[Title] OR 'general medicine'[Title]) AND (2024:2026[Date - Publication])"
+    ids = fetch_pubmed_ids(query)
+    
+    links = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
+    liste_liens = "\n".join(links)
 
-    # 1. Collecte des donnees
-    flux = feedparser.parse("https://www.who.int/rss-feeds/news-english.xml")
-    articles_rss = "\n".join([f"- RSS: {e.title}" for e in flux.entries[:5]])
-    pmids = fetch_pubmed_titles("epidemiology")
-    articles_pubmed = "\n".join([f"- PubMed ID: {id}" for id in pmids])
-
-    # ON DEFINIT LE PROMPT ICI (Avant l'appel a l'IA)
-    donnees_brutes = f"SOURCES RSS :\n{articles_rss}\n\nSOURCES PUBMED :\n{articles_pubmed}"
-    texte_prompt = f"Fais un resume court avec emojis (Urgent, Etudes, Infos) de ces actus : {donnees_brutes}"
-
-    # 2. Appel IA
-    print("- Analyse par l'IA...")
+    client = genai.Client(api_key=GEMINI_KEY)
+    prompt = f"""
+    Tu es un medecin expert. Voici des liens d'articles : {liste_liens}.
+    Pour chaque article :
+    1. Traduis le titre en Francais.
+    2. Fais un resume de 3-4 lignes en Francais.
+    3. Explique l'interet clinique (Gyneco, Endo ou MG).
+    A la fin, liste les liens originaux.
+    Important : N'utilise pas de caracteres speciaux complexes, reste simple.
+    """
+    
     try:
-        client = genai.Client(api_key=GEMINI_KEY)
-        # On utilise gemini-2.0-flash qui est le plus recent et souvent mieux supporte
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=texte_prompt)
-        resume = response.text
+        response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+        contenu_final = response.text
     except Exception as e:
-        resume = f"Erreur IA : {e}"
+        contenu_final = f"Erreur IA : {e}\n\nLiens trouves :\n{liste_liens}"
 
-    # 3. ENVOI MAIL
-    print("- Envoi du mail...")
+    generer_pdf(contenu_final)
+
+    # Envoi du mail
+    msg = MIMEMultipart()
+    msg['From'] = "Veille Medicale <gregallier66@gmail.com>"
+    msg['To'] = EMAIL_RECEIVER
+    msg['Subject'] = "Votre Rapport de Veille Medicale PDF"
+    msg.attach(MIMEText("Bonjour,\n\nVeuillez trouver ci-joint votre rapport de veille traduit en francais.", 'plain'))
+
+    with open("veille_medicale.pdf", "rb") as attachment:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment; filename=veille_medicale.pdf")
+        msg.attach(part)
+
     try:
-        msg = MIMEMultipart()
-        msg['From'] = "gregallier66@gmail.com"
-        msg['To'] = EMAIL_RECEIVER
-        msg['Subject'] = "Veille Medicale Reussie"
-        msg.attach(MIMEText(resume, 'plain'))
-
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server = smtplib.SMTP("smtp-relay.brevo.com", 587)
         server.starttls()
         server.login(EMAIL_SENDER, EMAIL_PW)
         server.send_message(msg)
         server.quit()
-        print("✅ Tout est bon ! Mail envoye.")
+        print("✅ Rapport PDF envoye avec succes.")
     except Exception as e:
-        print(f"❌ Erreur d'envoi : {e}")
+        print(f"❌ Erreur envoi : {e}")
 
 if __name__ == "__main__":
     envoyer_veille()
