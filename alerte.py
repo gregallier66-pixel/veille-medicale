@@ -27,16 +27,15 @@ def generer_pdf(texte):
     try:
         pdf = FPDF()
         pdf.add_page()
-        # On utilise une police standard
         pdf.set_font("Arial", size=12)
         
-        # NETTOYAGE CRITIQUE : fpdf ne supporte que le latin-1 par defaut
-        # On remplace les caracteres complexes par leurs equivalents simples
-        clean_text = texte.replace('’', "'").replace('€', ' Euros')
-        clean_text = clean_text.encode('latin-1', 'replace').decode('latin-1')
+        # NETTOYAGE ULTIME : On ne garde que les caracteres standards
+        # Cela evite l'erreur a la ligne 27
+        txt_nettoye = texte.replace('\u2019', "'").replace('\u2013', '-').replace('\u2014', '-')
+        txt_final = txt_nettoye.encode('latin-1', 'replace').decode('latin-1')
         
-        pdf.multi_cell(0, 10, txt=clean_text)
-        pdf.output("veille_medicale.pdf")
+        pdf.multi_cell(0, 10, txt=txt_final)
+        pdf.output("report.pdf") # Nom simple
         return True
     except Exception as e:
         print(f"Erreur PDF : {e}")
@@ -47,8 +46,13 @@ def envoyer_veille():
     ids = fetch_pubmed_ids(query)
     liste_liens = "\n".join([f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids])
 
+    if not ids:
+        print("Aucun article trouvé.")
+        return
+
     client = genai.Client(api_key=GEMINI_KEY)
-    prompt = f"Tu es medecin. Analyse ces liens : {liste_liens}. Pour chaque : Titre en FR, resume 3 lignes FR, interet clinique. Termine par les liens. PAS DE CARACTERES SPECIAUX COMPLEXES."
+    # On demande explicitement a l'IA de NE PAS mettre d'emojis
+    prompt = f"Tu es medecin. Analyse ces liens : {liste_liens}. Pour chaque : Titre en FR, resume court FR, interet clinique. INTERDIT : Emojis et caracteres speciaux. Termine par les liens."
     
     try:
         response = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
@@ -58,29 +62,30 @@ def envoyer_veille():
 
     if generer_pdf(contenu):
         msg = MIMEMultipart()
-        msg['From'] = "Veille Medicale <gregallier66@gmail.com>"
+        msg['From'] = EMAIL_SENDER
         msg['To'] = EMAIL_RECEIVER
-        msg['Subject'] = "Votre Veille Medicale PDF"
-        msg.attach(MIMEText("Ci-joint votre veille.", 'plain'))
+        msg['Subject'] = "Veille Medicale Gyneco/Endo"
+        msg.attach(MIMEText("Voici votre rapport PDF.", 'plain'))
 
-        with open("veille_medicale.pdf", "rb") as attachment:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", "attachment; filename=veille_medicale.pdf")
-            msg.attach(part)
+        if os.path.exists("report.pdf"):
+            with open("report.pdf", "rb") as attachment:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", "attachment; filename=veille.pdf")
+                msg.attach(part)
 
-        try:
-            server = smtplib.SMTP("smtp-relay.brevo.com", 587)
-            server.starttls()
-            server.login(EMAIL_SENDER, EMAIL_PW)
-            server.send_message(msg)
-            server.quit()
-            print("✅ Succes")
-        except Exception as e:
-            print(f"❌ Erreur envoi : {e}")
+            try:
+                server = smtplib.SMTP("smtp-relay.brevo.com", 587)
+                server.starttls()
+                server.login(EMAIL_SENDER, EMAIL_PW)
+                server.send_message(msg)
+                server.quit()
+                print("✅ Email envoyé avec PDF")
+            except Exception as e:
+                print(f"❌ Erreur SMTP : {e}")
     else:
-        print("❌ Echec generation PDF")
+        print("❌ Echec PDF")
 
 if __name__ == "__main__":
     envoyer_veille()
