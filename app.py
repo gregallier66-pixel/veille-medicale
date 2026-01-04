@@ -5,8 +5,8 @@ import requests
 # 1. RECUPERATION FORCEE DES SECRETS
 # On utilise st.secrets pour lire directement le coffre-fort de Streamlit
 try:
-    G_KEY = st.secrets["AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g"]
-    P_KEY = st.secrets["17626ab73380b71515000371bdcee0c26308"]
+    G_KEY = st.secrets["GEMINI_KEY"]
+    P_KEY = st.secrets["PUBMED_API_KEY"]
 except:
     st.error("ERREUR CRITIQUE : Les noms GEMINI_KEY ou PUBMED_API_KEY sont mal orthographiés dans l'onglet Secrets.")
     st.stop()
