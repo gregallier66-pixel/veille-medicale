@@ -14,9 +14,16 @@ PUBMED_API_KEY = st.secrets.get("17626ab73380b71515000371bdcee0c26308", "")
 st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #007bff; color: white; }
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 5px; 
+        height: 3em; 
+        background-color: #007bff; 
+        color: white; 
+    }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
+
 
 st.title("🩺 Ma Veille Médicale Interactive")
 st.write("Consultez les dernières publications PubMed analysées par l'IA.")
