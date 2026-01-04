@@ -1,0 +1,24 @@
+name: Veille Quotidienne
+on:
+  schedule:
+    - cron: '0 7 * * *' # 8h00 heure française
+  workflow_dispatch: # Bouton pour lancer manuellement
+
+jobs:
+  run-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install google-genai feedparser requests
+      - name: Run script
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          PUBMED_API_KEY: ${{ secrets.PUBMED_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PW: ${{ secrets.EMAIL_PW }}
+        run: python alerte.py
