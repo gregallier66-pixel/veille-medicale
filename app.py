@@ -1,49 +1,37 @@
 import streamlit as st
 import requests
 import google.generativeai as genai
-import os
 
-# Configuration de l'interface
-st.set_page_config(page_title="Veille Médicale Expert", page_icon="🩺", layout="wide")
+# Configuration
+st.set_page_config(page_title="Veille Medicale", layout="wide")
 
-# Récupération sécurisée des secrets
-GEMINI_KEY = st.secrets.get("AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g", "")
-PUBMED_API_KEY = st.secrets.get("17626ab73380b71515000371bdcee0c26308", "")
+# Lecture des clés dans les Secrets (Vérifiez bien l'orthographe dans l'onglet Secrets)
+# Ils doivent s'appeler GEMINI_KEY et PUBMED_API_KEY
+K1 = st.secrets.get("AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g", "")
+K2 = st.secrets.get("17626ab73380b71515000371bdcee0c26308", "")
 
-st.title("🩺 Ma Veille Médicale Interactive")
+st.title("🩺 Ma Veille Médicale")
 
-# Barre latérale
-with st.sidebar:
-    st.header("Filtres")
-    specialite = st.selectbox("Spécialité", ["Gynécologie-Obstétrique", "Endocrinologie", "Médecine Générale"])
-    nb_resultats = st.slider("Nombre d'articles", 1, 10, 5)
+spec = st.sidebar.selectbox("Specialite", ["Endocrinologie", "Gynecologie", "Medecine Generale"])
 
-# Requête PubMed
-query = f"{specialite}[Title] AND 2025[Date - Publication]"
-
-if st.button(f"Lancer la veille en {specialite}"):
-    if not GEMINI_KEY:
-        st.error("Erreur : La clé GEMINI_KEY n'est pas détectée dans les Secrets Streamlit.")
+if st.button(f"Analyser {spec}"):
+    if not K1:
+        st.error("Cle API manquante dans les Secrets Streamlit.")
     else:
-        with st.spinner("Analyse PubMed et IA en cours..."):
-            # Recherche PubMed
+        with st.spinner("Recherche en cours..."):
+            # Recherche simple
             url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-            params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": nb_resultats, "api_key": PUBMED_API_KEY}
+            params = {"db": "pubmed", "term": spec, "retmode": "json", "retmax": 3, "api_key": K2}
             
-            try:
-                ids = requests.get(url, params=params).json().get("esearchresult", {}).get("idlist", [])
+            res = requests.get(url, params=params).json()
+            ids = res.get("esearchresult", {}).get("idlist", [])
+            
+            if ids:
+                genai.configure(api_key=K1)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                links = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
                 
-                if ids:
-                    genai.configure(api_key=GEMINI_KEY)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    
-                    liens = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
-                    prompt = f"Fais une synthèse en Français pour un médecin de ces articles : {liens}"
-                    
-                    response = model.generate_content(prompt)
-                    st.markdown(response.text)
-                else:
-                    st.warning("Aucun article trouvé aujourd'hui.")
-            except Exception as e:
-                st.error(f"Une erreur est survenue : {e}")
-
+                response = model.generate_content(f"Resume en Francais : {links}")
+                st.markdown(response.text)
+            else:
+                st.write("Aucun article trouvé.")
