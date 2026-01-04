@@ -6,9 +6,10 @@ import os
 # Configuration de l'interface
 st.set_page_config(page_title="Veille Médicale Expert", page_icon="🩺", layout="wide")
 
-# Récupération des secrets (Configurés dans Streamlit Cloud)
+# RÉCUPÉRATION DIRECTE DES SECRETS
 GEMINI_KEY = st.secrets.get("AIzaSyCMPYJIHZ83uVhYwV6eqKxsC1pv7Hbol6g", "")
 PUBMED_API_KEY = st.secrets.get("17626ab73380b71515000371bdcee0c26308", "")
+
 
 # Style personnalisé
 st.markdown("""
