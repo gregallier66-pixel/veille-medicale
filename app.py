@@ -4,53 +4,88 @@ import urllib.request
 import urllib.parse
 import json
 
-st.set_page_config(page_title="Veille Médicale Expert", layout="wide")
+# Configuration de la page
+st.set_page_config(page_title="Ma Veille Médicale", layout="wide")
 
+# 1. Vérification des Secrets
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
     P_KEY = st.secrets["PUBMED_API_KEY"]
-except:
-    st.error("Secrets manquants.")
+except Exception as e:
+    st.error("ERREUR : Les secrets GEMINI_KEY ou PUBMED_API_KEY sont absents.")
     st.stop()
 
-TRAD = {"Gynécologie": "Gynecology", "Endocrinologie": "Endocrinology", "Médecine Générale": "General Medicine"}
+# 2. Dictionnaire de traduction (Anglais pour PubMed)
+TRAD = {
+    "Gynécologie": "Gynecology",
+    "Endocrinologie": "Endocrinology", 
+    "Médecine Générale": "General Medicine"
+}
 
-st.title("🩺 Ma Veille Médicale")
+st.title("🩺 Ma Veille Médicale Expert")
 
+# 3. Paramètres dans la barre latérale
 with st.sidebar:
+    st.header("Paramètres")
     spec_fr = st.selectbox("Spécialité", list(TRAD.keys()))
     annee = st.radio("Année", ["2024", "2025"])
-    nb = st.slider("Articles", 1, 5, 2) # Limité à 5 pour la rapidité
+    nb_art = st.slider("Articles à analyser", 1, 5, 2)
 
-if st.button("Lancer la recherche"):
-    # Étape 1 : PubMed
-    status = st.empty() 
-    status.info("1. Recherche sur PubMed en cours...")
+# 4. Lancement de la recherche
+# Note: 'key' évite l'erreur StreamlitDuplicateElementId
+if st.button(f"Lancer la recherche en {spec_fr}", key="btn_veille_unique"):
+    status = st.empty()
+    status.info("🔍 1. Recherche sur PubMed en cours...")
     
-    term = TRAD[spec_fr]
-    params = {"db": "pubmed", "term": f"{term} AND {annee}[pdat]", "retmode": "json", "retmax": nb, "api_key": P_KEY}
-    url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?{urllib.parse.urlencode(params)}"
+    term_en = TRAD[spec_fr]
+    
+    # Encodage sécurisé de l'URL pour éviter l'HTTP Error 400
+    base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+    params = {
+        "db": "pubmed",
+        "term": f"{term_en} AND {annee}[pdat]",
+        "retmode": "json",
+        "retmax": str(nb_art),
+        "api_key": P_KEY
+    }
+    full_url = f"{base_url}?{urllib.parse.urlencode(params)}"
     
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as response:
+        # Requête avec User-Agent pour éviter les blocages serveurs
+        req = urllib.request.Request(full_url, headers={'User-Agent': 'Mozilla/5.0'})
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
             data = json.loads(response.read().decode())
             ids = data.get("esearchresult", {}).get("idlist", [])
         
         if ids:
-            status.info(f"2. {len(ids)} articles trouvés. Analyse IA lancée...")
-            # Étape 2 : IA
+            status.info(f"🧬 2. {len(ids)} articles trouvés. Analyse IA...")
+            
+            # Liens PubMed pour l'utilisateur et l'IA
+            liens = [f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" for pmid in ids]
+            
+            # Configuration Gemini
             genai.configure(api_key=G_KEY)
             model = genai.GenerativeModel('gemini-1.5-flash')
-            liens = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
             
-            prompt = f"Résume brièvement en français ces articles médicaux : {liens}"
-            response = model.generate_content(prompt)
+            prompt = f"""Tu es un expert médical. 
+            Résume de façon synthétique et structurée en français les articles suivants :
+            {', '.join(liens)}"""
             
-            status.empty() # On efface le message de chargement
-            st.success("Analyse terminée !")
-            st.markdown(response.text)
+            resultat_ia = model.generate_content(prompt)
+            
+            # Affichage final
+            status.empty()
+            st.success("✅ Analyse terminée")
+            st.markdown("### Synthèse des articles identifiés")
+            st.markdown(resultat_ia.text)
+            
+            with st.expander("Voir les sources PubMed"):
+                for l in liens:
+                    st.write(l)
         else:
-            status.warning("Aucun article trouvé.")
+            status.warning(f"Aucun article trouvé pour {term_en} en {annee}.")
+            
     except Exception as e:
-        st.error(f"Erreur : {e}")
+        status.empty()
+        st.error(f"Erreur technique : {e}")
