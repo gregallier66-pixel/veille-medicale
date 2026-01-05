@@ -19,14 +19,16 @@ except:
 # Spécialités étendues
 TRAD = {
     "Gynécologie": "Gynecology",
-    "Endocrinologie": "Endocrinology",
+    "Obstétrique": "Obstetrics",
+    "Anesthésie-Réanimation": "Anesthesiology",
     "Médecine Générale": "General Medicine",
+    "Endocrinologie": "Endocrinology",
     "Cardiologie": "Cardiology",
     "Neurologie": "Neurology",
     "Oncologie": "Oncology",
-    "Pédiatrie": "Pediatrics",
-    "Anesthésie-Réanimation": "Anesthesiology",
-    "Obstétrique": "Obstetrics"
+    "Pédiatrie": "Pediatrics"
+   
+   
 }
 
 # Types d'études
@@ -86,7 +88,7 @@ Traduction en français:"""
     except Exception as e:
         return f"[Erreur de traduction: {str(e)}]"
 
-# Fonction pour créer un PDF
+# Fonction pour créer un PDF enrichi
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
@@ -98,49 +100,138 @@ class PDF(FPDF):
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
     
-    def chapter_title(self, title):
-        self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, title, 0, 1, 'L')
-        self.ln(2)
+    def section_title(self, title):
+        self.set_font('Arial', 'B', 14)
+        self.set_fill_color(200, 220, 255)
+        self.cell(0, 10, title, 0, 1, 'L', 1)
+        self.ln(3)
     
-    def chapter_body(self, body):
+    def subsection_title(self, title):
+        self.set_font('Arial', 'B', 11)
+        self.cell(0, 8, title, 0, 1, 'L')
+        self.ln(1)
+    
+    def body_text(self, text):
         self.set_font('Arial', '', 10)
-        self.multi_cell(0, 5, body)
-        self.ln()
+        self.multi_cell(0, 5, text)
+        self.ln(2)
 
-def generer_pdf(spec, annee, nb_articles, pmids, synthese):
-    """Génère un PDF de la synthèse"""
+def generer_pdf_complet(spec, annee, nb_articles, pmids, synthese, articles_data):
+    """Génère un PDF complet avec synthèse IA et articles détaillés"""
     pdf = PDF()
     pdf.add_page()
     
-    # Informations de recherche
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, f'Specialite: {spec}', 0, 1)
-    pdf.cell(0, 10, f'Annee: {annee}', 0, 1)
-    pdf.cell(0, 10, f'Nombre d\'articles: {nb_articles}', 0, 1)
-    pdf.cell(0, 10, f'Date: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1)
-    pdf.ln(5)
+    # PAGE DE GARDE
+    pdf.set_font('Arial', 'B', 20)
+    pdf.ln(30)
+    pdf.cell(0, 15, 'VEILLE MEDICALE', 0, 1, 'C')
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'Synthese et Articles', 0, 1, 'C')
+    pdf.ln(20)
     
-    # PMIDs
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, 'Articles analyses (PMIDs):', 0, 1)
-    pdf.set_font('Arial', '', 10)
-    pdf.multi_cell(0, 5, ', '.join(pmids))
-    pdf.ln(5)
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, f'Specialite: {spec}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Periode: {annee}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Nombre d\'articles: {nb_articles}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Date de generation: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
     
-    # Synthèse
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, 'Synthese par Intelligence Artificielle', 0, 1)
-    pdf.ln(2)
+    # PARTIE 1 : SYNTHÈSE IA
+    pdf.add_page()
+    pdf.section_title('PARTIE 1 : SYNTHESE PAR INTELLIGENCE ARTIFICIELLE')
     
-    # Encoder le texte en latin-1 (simple) pour éviter les erreurs unicode
+    # Nettoyer et encoder le texte de la synthèse
     try:
         synthese_clean = synthese.encode('latin-1', 'ignore').decode('latin-1')
     except:
         synthese_clean = synthese.encode('ascii', 'ignore').decode('ascii')
     
+    pdf.body_text(synthese_clean)
+    
+    # PARTIE 2 : ARTICLES DÉTAILLÉS
+    pdf.add_page()
+    pdf.section_title('PARTIE 2 : ARTICLES ETUDIES')
+    pdf.ln(5)
+    
+    for i, article in enumerate(articles_data, 1):
+        # Titre de l'article
+        pdf.subsection_title(f'Article {i}')
+        
+        # PMID
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 6, f'PMID: {article["pmid"]}', 0, 1)
+        
+        # Titre
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 6, 'Titre:', 0, 1)
+        try:
+            title_clean = article['title'].encode('latin-1', 'ignore').decode('latin-1')
+        except:
+            title_clean = article['title'].encode('ascii', 'ignore').decode('ascii')
+        pdf.set_font('Arial', '', 10)
+        pdf.multi_cell(0, 5, title_clean)
+        pdf.ln(2)
+        
+        # Auteurs
+        if article['authors']:
+            pdf.set_font('Arial', 'B', 10)
+            pdf.cell(0, 6, 'Auteurs:', 0, 1)
+            pdf.set_font('Arial', '', 10)
+            authors_text = ', '.join(article['authors'])
+            try:
+                authors_clean = authors_text.encode('latin-1', 'ignore').decode('latin-1')
+            except:
+                authors_clean = authors_text.encode('ascii', 'ignore').decode('ascii')
+            pdf.multi_cell(0, 5, authors_clean)
+            pdf.ln(2)
+        
+        # Journal et année
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 6, 'Publication:', 0, 1)
+        pdf.set_font('Arial', '', 10)
+        try:
+            journal_clean = article['journal'].encode('latin-1', 'ignore').decode('latin-1')
+        except:
+            journal_clean = article['journal'].encode('ascii', 'ignore').decode('ascii')
+        pdf.cell(0, 5, f'{journal_clean} ({article["year"]})', 0, 1)
+        pdf.ln(2)
+        
+        # Résumé en français
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(0, 6, 'Resume (Francais):', 0, 1)
+        pdf.set_font('Arial', '', 9)
+        try:
+            abstract_clean = article['abstract_fr'].encode('latin-1', 'ignore').decode('latin-1')
+        except:
+            abstract_clean = article['abstract_fr'].encode('ascii', 'ignore').decode('ascii')
+        pdf.multi_cell(0, 4, abstract_clean)
+        pdf.ln(3)
+        
+        # Lien PubMed
+        pdf.set_font('Arial', 'I', 9)
+        pdf.cell(0, 5, f'Lien: https://pubmed.ncbi.nlm.nih.gov/{article["pmid"]}/', 0, 1)
+        
+        # Séparateur
+        pdf.ln(5)
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+        
+        # Nouvelle page tous les 2-3 articles pour éviter la surcharge
+        if i % 2 == 0 and i < len(articles_data):
+            pdf.add_page()
+    
+    # TABLE DES MATIÈRES DES PMIDs (à la fin)
+    pdf.add_page()
+    pdf.section_title('INDEX DES ARTICLES PAR PMID')
+    pdf.ln(3)
+    
     pdf.set_font('Arial', '', 10)
-    pdf.multi_cell(0, 5, synthese_clean)
+    for i, article in enumerate(articles_data, 1):
+        try:
+            title_short = article['title'][:80].encode('latin-1', 'ignore').decode('latin-1')
+        except:
+            title_short = article['title'][:80].encode('ascii', 'ignore').decode('ascii')
+        pdf.cell(0, 6, f'{i}. PMID {article["pmid"]}: {title_short}...', 0, 1)
     
     # Sauvegarder en mémoire
     pdf_output = io.BytesIO()
@@ -205,7 +296,7 @@ def recuperer_abstracts(pmids, traduire=False, api_key=None):
                     'title': title,
                     'abstract': abstract,
                     'abstract_fr': abstract_fr,
-                    'authors': authors[:3],  # 3 premiers auteurs
+                    'authors': authors,  # Tous les auteurs pour le PDF
                     'journal': journal,
                     'year': year
                 })
@@ -230,8 +321,7 @@ def sauvegarder_recherche(spec, annee, type_etude, langue, pmids, synthese, mots
         'pmids': pmids,
         'synthese': synthese
     }
-    st.session_state.historique.insert(0, recherche)  # Ajouter en première position
-    # Garder seulement les 20 dernières recherches
+    st.session_state.historique.insert(0, recherche)
     if len(st.session_state.historique) > 20:
         st.session_state.historique = st.session_state.historique[:20]
 
@@ -304,30 +394,24 @@ with tab1:
             display_term = spec_fr
             mots_cles_traduits = None
         else:
-            # Traduire les mots-clés français en anglais
             with st.spinner("🌐 Traduction des mots-clés en anglais médical..."):
                 mots_cles_traduits = traduire_mots_cles(mots_cles_custom, G_KEY)
             
             term = mots_cles_traduits
             display_term = f"Mots-clés: {mots_cles_custom}"
-            
-            # Afficher la traduction
             st.info(f"🔄 **Traduction pour PubMed:** {mots_cles_traduits}")
         
         # Construction de la requête avec filtres
         query_parts = [term]
         
-        # Filtre de période
         if annee_debut == annee_fin:
             query_parts.append(f"{annee_debut}[pdat]")
         else:
             query_parts.append(f"{annee_debut}:{annee_fin}[pdat]")
         
-        # Type d'étude
         if TYPES_ETUDE[type_etude]:
             query_parts.append(f"{TYPES_ETUDE[type_etude]}[ptyp]")
         
-        # Langue
         langue_codes = {
             "Anglais": "eng",
             "Français": "fre",
@@ -349,7 +433,6 @@ with tab1:
             "sort": "relevance"
         }
         
-        # Afficher la requête
         with st.expander("🔍 Détails de la requête PubMed"):
             st.write(f"**Recherche:** {display_term}")
             if mots_cles_traduits:
@@ -399,9 +482,8 @@ with tab1:
                         st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
                         st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
                         if article['authors']:
-                            st.markdown(f"**Auteurs:** {', '.join(article['authors'])}")
+                            st.markdown(f"**Auteurs:** {', '.join(article['authors'][:3])}")
                         
-                        # Afficher résumé traduit ou original
                         if traduire_abstracts:
                             st.markdown("**📖 Résumé (Français):**")
                             st.write(article['abstract_fr'])
@@ -421,7 +503,7 @@ with tab1:
             
             st.divider()
             
-            # ÉTAPE 3 : Analyse IA enrichie avec les abstracts
+            # ÉTAPE 3 : Analyse IA
             st.subheader("🤖 Synthèse par Intelligence Artificielle")
             
             with st.spinner("⏳ Analyse approfondie en cours..."):
@@ -429,7 +511,6 @@ with tab1:
                     genai.configure(api_key=G_KEY)
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     
-                    # Préparer le contexte avec les abstracts (en français si traduits)
                     contexte_articles = ""
                     if articles_complets:
                         for art in articles_complets:
@@ -480,10 +561,8 @@ Utilise un ton professionnel, scientifique mais accessible. Cite les PMIDs perti
                     response_ia = model.generate_content(prompt)
                     synthese_texte = response_ia.text
                     
-                    # Afficher la synthèse
                     st.markdown(synthese_texte)
                     
-                    # Sauvegarder dans l'historique
                     sauvegarder_recherche(
                         spec_fr if mode_recherche == "Par spécialité" else "Recherche personnalisée",
                         f"{annee_debut}-{annee_fin}",
@@ -510,12 +589,20 @@ Utilise un ton professionnel, scientifique mais accessible. Cite les PMIDs perti
                         )
                     
                     with col2:
-                        # Générer le PDF
-                        pdf_bytes = generer_pdf(display_term, f"{annee_debut}-{annee_fin}", len(ids), ids, synthese_texte)
+                        # Générer le PDF COMPLET avec articles
+                        with st.spinner("📄 Génération du PDF complet..."):
+                            pdf_bytes = generer_pdf_complet(
+                                display_term, 
+                                f"{annee_debut}-{annee_fin}", 
+                                len(ids), 
+                                ids, 
+                                synthese_texte,
+                                articles_complets
+                            )
                         st.download_button(
-                            label="📄 Télécharger (PDF)",
+                            label="📄 Télécharger PDF Complet (Synthèse + Articles)",
                             data=pdf_bytes,
-                            file_name=f"synthese_{nom_fichier}_{annee_debut}-{annee_fin}.pdf",
+                            file_name=f"veille_medicale_complete_{nom_fichier}_{annee_debut}-{annee_fin}.pdf",
                             mime="application/pdf"
                         )
                     
@@ -557,7 +644,6 @@ with tab2:
                 st.markdown("**Synthèse IA:**")
                 st.markdown(rech['synthese'])
                 
-                # Boutons de téléchargement pour l'historique
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
@@ -570,10 +656,25 @@ with tab2:
                     )
                 
                 with col2:
-                    pdf_bytes = generer_pdf(rech['specialite'], rech['annee'], rech['nb_articles'], rech['pmids'], rech['synthese'])
+                    # Note: Pour l'historique, on génère un PDF simple (sans articles complets)
+                    # car on n'a pas sauvegardé les données complètes des articles
+                    pdf_simple = PDF()
+                    pdf_simple.add_page()
+                    pdf_simple.set_font('Arial', '', 10)
+                    try:
+                        synthese_clean = rech['synthese'].encode('latin-1', 'ignore').decode('latin-1')
+                    except:
+                        synthese_clean = rech['synthese'].encode('ascii', 'ignore').decode('ascii')
+                    pdf_simple.multi_cell(0, 5, synthese_clean)
+                    
+                    pdf_output = io.BytesIO()
+                    pdf_string = pdf_simple.output(dest='S').encode('latin-1')
+                    pdf_output.write(pdf_string)
+                    pdf_bytes_hist = pdf_output.getvalue()
+                    
                     st.download_button(
                         label="📄 PDF",
-                        data=pdf_bytes,
+                        data=pdf_bytes_hist,
                         file_name=f"synthese_historique_{i+1}.pdf",
                         mime="application/pdf",
                         key=f"pdf_{i}"
@@ -595,6 +696,5 @@ with tab2:
             st.success("Historique effacé !")
             st.rerun()
 
-# Footer
 st.markdown("---")
 st.caption("💊 Application de veille médicale professionnelle | PubMed + Gemini 2.5 | 🌐 Traduction FR↔EN automatique")
