@@ -30,7 +30,7 @@ with st.sidebar:
     
     st.divider()
     st.caption("🔬 Données: PubMed/NCBI")
-    st.caption("🤖 IA: Google Gemini")
+    st.caption("🤖 IA: Google Gemini 2.5")
 
 if st.button("🔍 Lancer la recherche", type="primary", use_container_width=True):
     
@@ -85,15 +85,15 @@ if st.button("🔍 Lancer la recherche", type="primary", use_container_width=Tru
         
         st.divider()
         
-        # ÉTAPE 3 : Analyse IA avec le BON modèle
+        # ÉTAPE 3 : Analyse IA
         st.subheader("🤖 Synthèse par Intelligence Artificielle")
         
-        with st.spinner("⏳ Analyse en cours par Gemini..."):
+        with st.spinner("⏳ Analyse en cours par Gemini 2.5..."):
             try:
                 genai.configure(api_key=G_KEY)
                 
-                # CORRECTION : Utiliser gemini-pro au lieu de gemini-1.5-flash
-                model = genai.GenerativeModel('gemini-pro')
+                # ✅ CORRECTION : Utiliser gemini-2.5-flash (le plus récent et performant)
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 
                 liens_articles = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{pmid}/" for pmid in ids])
                 
@@ -135,18 +135,11 @@ Utilise un ton professionnel mais accessible. Sois précis et factuel."""
                     mime="text/plain"
                 )
                 
+                st.success("✅ Synthèse générée avec succès !")
+                
             except Exception as e:
                 st.error(f"❌ Erreur lors de l'analyse IA: {str(e)}")
                 st.info("💡 Les liens vers les articles restent accessibles ci-dessus")
-                
-                # Afficher les modèles disponibles pour debug
-                with st.expander("🔧 Debug: Modèles disponibles"):
-                    try:
-                        for m in genai.list_models():
-                            if 'generateContent' in m.supported_generation_methods:
-                                st.write(f"✅ {m.name}")
-                    except:
-                        pass
     
     except requests.exceptions.Timeout:
         st.error("❌ Délai dépassé - PubMed ne répond pas")
@@ -157,4 +150,4 @@ Utilise un ton professionnel mais accessible. Sois précis et factuel."""
 
 # Footer
 st.markdown("---")
-st.caption("💊 Application de veille médicale | Données PubMed + IA Gemini")
+st.caption("💊 Application de veille médicale | Données PubMed + IA Gemini 2.5")
