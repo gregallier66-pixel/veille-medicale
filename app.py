@@ -6,12 +6,12 @@ import json
 
 st.set_page_config(page_title="Veille Médicale", layout="wide")
 
-# Récupération des secrets
+# Récupération des secrets (configurés dans vos settings Streamlit)
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
     P_KEY = st.secrets["PUBMED_API_KEY"]
 except:
-    st.error("Erreur de Secrets.")
+    st.error("Erreur de Secrets. Vérifiez les noms GEMINI_KEY et PUBMED_API_KEY.")
     st.stop()
 
 TRAD = {"Gynécologie": "Gynecology", "Endocrinologie": "Endocrinology", "Médecine Générale": "General Medicine"}
@@ -19,17 +19,26 @@ TRAD = {"Gynécologie": "Gynecology", "Endocrinologie": "Endocrinology", "Médec
 st.title("🩺 Ma Veille Médicale Expert")
 
 with st.sidebar:
-    st.header("Paramètres")
+    st.header("Configuration")
     spec_fr = st.selectbox("Spécialité", list(TRAD.keys()))
     annee = st.radio("Année", ["2024", "2025"])
     nb = st.slider("Articles", 1, 10, 5)
 
-# LE BOUTON AVEC UNE CLÉ UNIQUE POUR ÉVITER L'ERREUR DUPLICATE
-if st.button(f"Lancer la recherche en {spec_fr}", key="search_btn"):
-    with st.spinner("Recherche PubMed..."):
+# Utilisation d'une clé unique pour éviter l'erreur DuplicateElementId
+if st.button(f"Lancer la recherche", key="unique_search_button"):
+    with st.spinner("Interrogation de PubMed..."):
         term = TRAD[spec_fr]
-        # Encodage sécurisé de la requête
-        params = {"db": "pubmed", "term": f"{term} AND {annee}[dp]", "retmode": "json", "retmax": nb, "api_key": P_KEY}
+        
+        # Préparation propre des paramètres
+        params = {
+            "db": "pubmed",
+            "term": f"{term} AND {annee}[dp]",
+            "retmode": "json",
+            "retmax": nb,
+            "api_key": P_KEY
+        }
+        
+        # Encodage automatique (règle l'erreur 400)
         url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?{urllib.parse.urlencode(params)}"
         
         try:
@@ -39,7 +48,7 @@ if st.button(f"Lancer la recherche en {spec_fr}", key="search_btn"):
                 ids = data.get("esearchresult", {}).get("idlist", [])
             
             if ids:
-                st.success(f"{len(ids)} articles trouvés. Analyse IA...")
+                st.success(f"{len(ids)} articles identifiés. Analyse IA...")
                 genai.configure(api_key=G_KEY)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
@@ -49,6 +58,6 @@ if st.button(f"Lancer la recherche en {spec_fr}", key="search_btn"):
                 res_ia = model.generate_content(prompt)
                 st.markdown(res_ia.text)
             else:
-                st.warning(f"Aucun résultat pour {term} en {annee}. Essayez 'Depuis 2024'.")
+                st.warning(f"Aucun résultat trouvé pour {term} en {annee}.")
         except Exception as e:
             st.error(f"Erreur technique : {e}")
