@@ -8,7 +8,6 @@ st.set_page_config(page_title="Veille Médicale", layout="wide")
 # Récupération des secrets
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
-    P_KEY = st.secrets.get("PUBMED_API_KEY", "")
 except:
     st.error("Erreur de Secrets. Vérifiez GEMINI_KEY.")
     st.stop()
@@ -41,8 +40,7 @@ if st.button("Lancer la recherche", key="unique_search_button"):
             "sort": "relevance"
         }
         
-        if P_KEY and len(P_KEY) > 10:
-            params["api_key"] = P_KEY
+        # PAS DE CLÉ API - fonctionne parfaitement sans
         
         with st.expander("🔍 Informations de requête"):
             st.write("**URL:**", base_url)
@@ -54,7 +52,7 @@ if st.button("Lancer la recherche", key="unique_search_button"):
                 base_url,
                 params=params,
                 headers={
-                    'User-Agent': 'Mozilla/5.0',
+                    'User-Agent': 'Mozilla/5.0 (Streamlit Medical App)',
                 },
                 timeout=15
             )
@@ -62,11 +60,9 @@ if st.button("Lancer la recherche", key="unique_search_button"):
             with st.expander("📋 Réponse HTTP"):
                 st.write(f"**Status Code:** {response.status_code}")
                 st.write(f"**URL finale:** {response.url}")
-                st.code(response.text[:500])
             
             if response.status_code != 200:
                 st.error(f"❌ Erreur HTTP {response.status_code}")
-                st.write("**Réponse complète:**")
                 st.code(response.text)
                 st.stop()
             
@@ -81,17 +77,14 @@ if st.button("Lancer la recherche", key="unique_search_button"):
             st.info(f"📊 PubMed a trouvé {count} articles au total")
             
             if ids:
-                st.success(f"✅ Affichage de {len(ids)} articles")
+                st.success(f"✅ {len(ids)} articles récupérés")
                 
                 st.subheader("📚 Articles trouvés")
-                cols = st.columns(2)
-                for i, pmid in enumerate(ids):
-                    col = cols[i % 2]
-                    with col:
-                        st.markdown(f"**{i+1}.** [PubMed ID: {pmid}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
+                for i, pmid in enumerate(ids, 1):
+                    st.markdown(f"{i}. [Article PubMed {pmid}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
                 
-                st.subheader("🤖 Analyse par IA")
-                with st.spinner("Génération du résumé..."):
+                st.subheader("🤖 Analyse par Gemini")
+                with st.spinner("Génération de la synthèse médicale..."):
                     try:
                         genai.configure(api_key=G_KEY)
                         model = genai.GenerativeModel('gemini-1.5-flash')
@@ -100,28 +93,23 @@ if st.button("Lancer la recherche", key="unique_search_button"):
                         
                         prompt = f"""Tu es un expert médical francophone spécialisé en {spec_fr}.
 
-Tu dois analyser {len(ids)} articles médicaux récents de {annee} identifiés sur PubMed.
+Analyse ces {len(ids)} articles médicaux récents de {annee} (PMIDs: {', '.join(ids)}).
 
-PMIDs: {', '.join(ids)}
-
-Rédige une synthèse professionnelle en français structurée ainsi:
+Rédige une synthèse professionnelle en français avec:
 
 ## 📊 Vue d'ensemble
-- Contexte et portée des publications
+Contexte général des publications
 
 ## 🔬 Tendances principales
-- Les thématiques émergentes
-- Les approches innovantes
+Thématiques émergentes et approches innovantes
 
 ## 💡 Découvertes notables
-- Les résultats significatifs
-- Les avancées marquantes
+Résultats significatifs et avancées marquantes
 
 ## 🏥 Implications cliniques
-- Applications pratiques
-- Recommandations potentielles
+Applications pratiques et recommandations
 
-**Liens vers les articles:**
+**Articles:**
 {liens}
 
 Sois précis, scientifique et accessible."""
@@ -130,27 +118,21 @@ Sois précis, scientifique et accessible."""
                         st.markdown(res_ia.text)
                         
                     except Exception as e:
-                        st.error(f"❌ Erreur IA: {str(e)}")
-                        st.info("💡 Vous pouvez consulter les articles directement via les liens ci-dessus")
+                        st.error(f"❌ Erreur lors de l'analyse IA: {str(e)}")
+                        st.info("💡 Consultez les articles directement via les liens ci-dessus")
             else:
                 st.warning(f"⚠️ Aucun article trouvé pour '{term}' en {annee}")
-                st.info("💡 **Suggestions:**")
-                st.write("- Essayez une autre année")
-                st.write("- Changez de spécialité")
-                st.write("- La recherche peut être trop restrictive")
+                st.info("💡 Essayez une autre année ou spécialité")
         
         except requests.exceptions.RequestException as e:
             st.error(f"❌ Erreur de connexion: {str(e)}")
-            st.info("Vérifiez votre connexion Internet")
             
         except json.JSONDecodeError as e:
             st.error(f"❌ Erreur JSON: {str(e)}")
-            st.write("La réponse n'est pas au format JSON valide")
             st.code(response.text)
             
         except Exception as e:
-            st.error(f"❌ Erreur: {type(e).__name__}")
-            st.write(str(e))
+            st.error(f"❌ Erreur: {type(e).__name__} - {str(e)}")
             import traceback
-            with st.expander("Détails techniques"):
+            with st.expander("Détails"):
                 st.code(traceback.format_exc())
