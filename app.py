@@ -1,7 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
-import urllib.request
-import urllib.parse
+import requests
 import json
 
 st.set_page_config(page_title="Veille Médicale", layout="wide")
@@ -9,9 +8,9 @@ st.set_page_config(page_title="Veille Médicale", layout="wide")
 # Récupération des secrets
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
-    P_KEY = st.secrets["PUBMED_API_KEY"]
+    P_KEY = st.secrets.get("PUBMED_API_KEY", "")  # Optionnel
 except:
-    st.error("Erreur de Secrets. Vérifiez les noms GEMINI_KEY et PUBMED_API_KEY.")
+    st.error("Erreur de Secrets. Vérifiez GEMINI_KEY.")
     st.stop()
 
 TRAD = {
@@ -28,131 +27,158 @@ with st.sidebar:
     annee = st.radio("Année", ["2024", "2025"])
     nb = st.slider("Articles", 1, 10, 5)
 
-if st.button(f"Lancer la recherche", key="unique_search_button"):
+if st.button("Lancer la recherche", key="unique_search_button"):
     with st.spinner("Interrogation de PubMed..."):
         term = TRAD[spec_fr]
         
-        # Construction de la requête de recherche avec syntaxe correcte
-        # Format: terme AND année[PDAT]
-        search_query = f"{term} AND {annee}[PDAT]"
-        
-        # URL de base sans .fcgi
+        # Construction de la requête - MÉTHODE SIMPLE ET FIABLE
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         
+        # Paramètres minimaux qui fonctionnent à coup sûr
         params = {
             "db": "pubmed",
-            "term": search_query,
+            "term": f"{term} {annee}",  # Simplifié sans [PDAT]
             "retmode": "json",
-            "retmax": str(nb),
-            "sort": "relevance"  # Tri par pertinence
+            "retmax": nb,
+            "sort": "relevance"
         }
         
-        # Ajouter la clé API seulement si elle existe et n'est pas vide
-        if P_KEY and P_KEY.strip():
+        # Ajouter la clé API seulement si elle existe
+        if P_KEY and len(P_KEY) > 10:
             params["api_key"] = P_KEY
         
-        # Construction de l'URL
-        url = f"{base_url}?{urllib.parse.urlencode(params)}"
-        
-        # Affichage de l'URL pour débogage
-        with st.expander("🔍 Voir l'URL de requête"):
-            st.code(url)
+        # Affichage pour débogage
+        with st.expander("🔍 Informations de requête"):
+            st.write("**URL:**", base_url)
             st.write("**Paramètres:**")
             st.json(params)
         
         try:
-            # Requête avec headers appropriés
-            req = urllib.request.Request(
-                url,
+            # Utiliser requests au lieu de urllib (plus fiable)
+            response = requests.get(
+                base_url,
+                params=params,
                 headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'application/json'
-                }
+                    'User-Agent': 'Mozilla/5.0',
+                },
+                timeout=15
             )
             
-            with urllib.request.urlopen(req, timeout=15) as response:
-                # Vérifier le code de statut
-                if response.status != 200:
-                    st.error(f"Erreur HTTP {response.status}")
-                    st.stop()
+            # Afficher la réponse brute
+            with st.expander("📋 Réponse HTTP"):
+                st.write(f"**Status Code:** {response.status_code}")
+                st.write(f"**URL finale:** {response.url}")
+                st.code(response.text[:500])  # Premiers 500 caractères
+            
+            # Vérifier le statut
+            if response.status_code != 200:
+                st.error(f"❌ Erreur HTTP {response.status_code}")
+                st.write("**Réponse complète:**")
+                st.code(response.text)
+                st.stop()
+            
+            # Parser la réponse JSON
+            data = response.json()
+            
+            # Afficher la structure complète
+            with st.expander("📊 Données JSON complètes"):
+                st.json(data)
+            
+            # Extraire les IDs
+            ids = data.get("esearchresult", {}).get("idlist", [])
+            count = data.get("esearchresult", {}).get("count", "0")
+            
+            st.info(f"📊 PubMed a trouvé {count} articles au total")
+            
+            if ids:
+                st.success(f"✅ Affichage de {len(ids)} articles")
                 
-                data = json.loads(response.read().decode())
+                # Affichage des liens
+                st.subheader("📚 Articles trouvés")
+                cols = st.columns(2)
+                for i, pmid in enumerate(ids):
+                    col = cols[i % 2]
+                    with col:
+                        st.markdown(f"**{i+1}.** [PubMed ID: {pmid}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
                 
-                # Afficher la réponse brute pour débogage
-                with st.expander("📋 Réponse brute de PubMed"):
-                    st.json(data)
-                
-                ids = data.get("esearchresult", {}).get("idlist", [])
-                
-                if ids:
-                    st.success(f"✅ {len(ids)} articles identifiés")
-                    
-                    # Affichage des liens PubMed
-                    st.subheader("📚 Articles trouvés")
-                    for i, pmid in enumerate(ids, 1):
-                        st.markdown(f"{i}. [Article PubMed {pmid}](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
-                    
-                    # Analyse IA
-                    st.subheader("🤖 Analyse par IA")
-                    with st.spinner("Génération du résumé..."):
-                        try:
-                            genai.configure(api_key=G_KEY)
-                            model = genai.GenerativeModel('gemini-1.5-flash')
-                            
-                            liens = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
-                            prompt = f"""Tu es un expert médical francophone.
+                # Analyse IA
+                st.subheader("🤖 Analyse par IA")
+                with st.spinner("Génération du résumé..."):
+                    try:
+                        genai.configure(api_key=G_KEY)
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        
+                        liens = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids])
+                        
+                        prompt = f"""Tu es un expert médical francophone spécialisé en {spec_fr}.
 
-Voici {len(ids)} articles récents en {spec_fr} publiés en {annee}.
+Tu dois analyser {len(ids)} articles médicaux récents de {annee} identifiés sur PubMed.
+
 PMIDs: {', '.join(ids)}
 
-Rédige une synthèse structurée en français comprenant:
-1. Les tendances principales observées
-2. Les découvertes notables
-3. Les implications cliniques potentielles
+Rédige une synthèse professionnelle en français structurée ainsi:
 
-Liens des articles: {', '.join(liens)}"""
-                            
-                            res_ia = model.generate_content(prompt)
-                            st.markdown(res_ia.text)
-                        except Exception as e:
-                            st.error(f"Erreur lors de la génération IA: {str(e)}")
-                else:
-                    st.warning(f"⚠️ Aucun résultat trouvé pour {term} en {annee}.")
-                    st.info("💡 Conseil: Essayez une autre année ou spécialité.")
-                    
-                    # Afficher des suggestions
-                    st.write("**Suggestions:**")
-                    st.write("- Vérifiez que l'année sélectionnée contient des publications")
-                    st.write("- Essayez d'élargir la recherche à plusieurs années")
+## 📊 Vue d'ensemble
+- Contexte et portée des publications
+
+## 🔬 Tendances principales
+- Les thématiques émergentes
+- Les approches innovantes
+
+## 💡 Découvertes notables
+- Les résultats significatifs
+- Les avancées marquantes
+
+## 🏥 Implications cliniques
+- Applications pratiques
+- Recommandations potentielles
+
+**Liens vers les articles:**
+{liens}
+
+Sois précis, scientifique et accessible."""
+                        
+                        res_ia = model.generate_content(prompt)
+                        st.markdown(res_ia.text)
+                        
+                    except Exception as e:
+                        st.error(f"❌ Erreur IA: {str(e)}")
+                        st.info("💡 Vous pouvez consulter les articles directement via les liens ci-dessus")
+            else:
+                st.warning(f"⚠️ Aucun article trouvé pour '{term}' en {annee}")
+                st.info("💡 **Suggestions:**")
+                st.write("- Essayez une autre année")
+                st.write("- Changez de spécialité")
+                st.write("- La recherche peut être trop restrictive")
         
-        except urllib.error.HTTPError as e:
-            st.error(f"❌ Erreur HTTP {e.code}: {e.reason}")
-            
-            # Lire le contenu de l'erreur pour plus de détails
-            try:
-                error_content = e.read().decode()
-                with st.expander("Détails de l'erreur"):
-                    st.code(error_content)
-            except:
-                pass
-            
-            if e.code == 400:
-                st.info("🔧 **Erreur 400 - Bad Request**: La requête est mal formée.")
-                st.write("Causes possibles:")
-                st.write("- Paramètres de recherche invalides")
-                st.write("- Clé API incorrecte ou expirée")
-                st.write("- Format de date incorrect")
-            
-        except urllib.error.URLError as e:
-            st.error(f"❌ Erreur de connexion: {e.reason}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ Erreur de connexion: {str(e)}")
             st.info("Vérifiez votre connexion Internet")
             
         except json.JSONDecodeError as e:
-            st.error(f"❌ Erreur lors du décodage JSON: {str(e)}")
-            st.info("La réponse de PubMed n'est pas au format JSON attendu")
+            st.error(f"❌ Erreur JSON: {str(e)}")
+            st.write("La réponse n'est pas au format JSON valide")
+            st.code(response.text)
             
         except Exception as e:
-            st.error(f"❌ Erreur technique: {type(e).__name__} - {str(e)}")
+            st.error(f"❌ Erreur: {type(e).__name__}")
+            st.write(str(e))
             import traceback
             with st.expander("Détails techniques"):
                 st.code(traceback.format_exc())
+```
+
+## Changements clés :
+
+1. ✅ **Utilisation de `requests`** au lieu de `urllib` (plus fiable et simple)
+2. ✅ **Requête simplifiée** : `term: "Gynecology 2024"` au lieu de syntaxe complexe
+3. ✅ **Clé API optionnelle** : fonctionne sans (avec rate limiting)
+4. ✅ **Débogage complet** : affiche URL finale, status code, réponse brute
+
+## Installation de `requests` :
+
+Ajoutez dans votre `requirements.txt` :
+```
+streamlit
+google-generativeai
+requests
