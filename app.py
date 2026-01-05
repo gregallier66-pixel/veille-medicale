@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 import json
-import time
 
 st.set_page_config(page_title="Veille Médicale", layout="wide")
 
@@ -86,13 +85,15 @@ if st.button("🔍 Lancer la recherche", type="primary", use_container_width=Tru
         
         st.divider()
         
-        # ÉTAPE 3 : Analyse IA
+        # ÉTAPE 3 : Analyse IA avec le BON modèle
         st.subheader("🤖 Synthèse par Intelligence Artificielle")
         
         with st.spinner("⏳ Analyse en cours par Gemini..."):
             try:
                 genai.configure(api_key=G_KEY)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # CORRECTION : Utiliser gemini-pro au lieu de gemini-1.5-flash
+                model = genai.GenerativeModel('gemini-pro')
                 
                 liens_articles = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{pmid}/" for pmid in ids])
                 
@@ -137,6 +138,15 @@ Utilise un ton professionnel mais accessible. Sois précis et factuel."""
             except Exception as e:
                 st.error(f"❌ Erreur lors de l'analyse IA: {str(e)}")
                 st.info("💡 Les liens vers les articles restent accessibles ci-dessus")
+                
+                # Afficher les modèles disponibles pour debug
+                with st.expander("🔧 Debug: Modèles disponibles"):
+                    try:
+                        for m in genai.list_models():
+                            if 'generateContent' in m.supported_generation_methods:
+                                st.write(f"✅ {m.name}")
+                    except:
+                        pass
     
     except requests.exceptions.Timeout:
         st.error("❌ Délai dépassé - PubMed ne répond pas")
