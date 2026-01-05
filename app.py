@@ -25,6 +25,45 @@ with st.sidebar:
     nb = st.slider("Articles", 1, 10, 5)
 
 if st.button(f"Lancer la recherche"):
+    with st.spinner("Connexion à PubMed..."):
+        term = TRAD[spec_fr]
+        
+        # METHODE PROPRE : On prépare les paramètres séparément
+        params = {
+            "db": "pubmed",
+            "term": f"{term} AND {annee}[dp]",
+            "retmode": "json",
+            "retmax": nb,
+            "api_key": P_KEY
+        }
+        
+        # On encode automatiquement pour éviter l'erreur 400
+        query_string = urllib.parse.urlencode(params)
+        url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?{query_string}"
+        
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode())
+                ids = data.get("esearchresult", {}).get("idlist", [])
+            
+            if ids:
+                st.success(f"Articles trouvés ! Analyse IA...")
+                genai.configure(api_key=G_KEY)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Création des liens
+                liens = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
+                prompt = f"Tu es un expert médical. Résume en français ces articles récents : {liens}"
+                
+                res_ia = model.generate_content(prompt)
+                st.markdown(res_ia.text)
+            else:
+                st.warning(f"Aucun résultat. Essayez une autre spécialité.")
+        except Exception as e:
+            st.error(f"Erreur technique : {e}")
+
+if st.button(f"Lancer la recherche"):
     with st.spinner("Connexion sécurisée à PubMed..."):
         term = TRAD[spec_fr]
         # URL de recherche simplifiée
