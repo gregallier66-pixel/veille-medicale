@@ -4,68 +4,52 @@ import requests
 
 st.set_page_config(page_title="Veille Médicale", layout="wide")
 
-# Vérification des secrets (nécessaire pour le fonctionnement)
+# Récupération des secrets
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
     P_KEY = st.secrets["PUBMED_API_KEY"]
 except:
-    st.error("Erreur de Secrets.")
+    st.error("Erreur de Secrets dans Streamlit.")
     st.stop()
 
-# Dictionnaire anglais pour PubMed
-TRADUCTION = {
-    "Gynécologie": "Gynecology",
-    "Endocrinologie": "Endocrinology",
-    "Médecine Générale": "General Medicine"
-}
+# Traduction pour PubMed
+TRAD = {"Gynécologie": "Gynecology", "Endocrinologie": "Endocrinology", "Médecine Générale": "General Medicine"}
 
-st.title("🩺 Ma Veille Médicale Expert")
+st.title("🩺 Veille Médicale Expert")
 
 with st.sidebar:
-    st.header("Configuration")
-    spec_fr = st.selectbox("Spécialité", list(TRADUCTION.keys()))
-    # On simplifie la période pour maximiser les chances de résultats
-    periode = st.radio("Période", ["Depuis 2024", "Depuis 2025"])
-    nb_art = st.slider("Nombre d'articles", 1, 10, 5)
+    st.header("Paramètres")
+    spec_fr = st.selectbox("Spécialité", list(TRAD.keys()))
+    annee = st.radio("Année", ["2024", "2025"])
+    nb = st.slider("Articles", 1, 10, 5)
 
-if st.button(f"Lancer la veille en {spec_fr}"):
-    with st.spinner("Recherche sur PubMed..."):
-        term_en = TRADUCTION[spec_fr]
-        annee = "2024" if periode == "Depuis 2024" else "2025"
+if st.button(f"Rechercher en {spec_fr}"):
+    with st.spinner("Appel à PubMed..."):
+        term = TRAD[spec_fr]
+        # Requête PubMed ultra-basique
+        url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={term}+AND+{annee}[dp]&retmode=json&retmax={nb}&api_key={P_KEY}"
         
-        # Requête simplifiée au maximum : Terme + Année
-        query = f"{term_en} AND {annee}[DP]"
-        
-        u = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-        params = {
-            "db": "pubmed",
-            "term": query,
-            "retmode": "json",
-            "retmax": nb_art,
-            "api_key": P_KEY
-        }
+        # Ajout d'un en-tête pour éviter d'être bloqué
+        headers = {'User-Agent': 'Mozilla/5.0'}
         
         try:
-            r = requests.get(u, params=params).json()
-            ids = r.get("esearchresult", {}).get("idlist", [])
+            response = requests.get(url, headers=headers)
+            data = response.json()
+            ids = data.get("esearchresult", {}).get("idlist", [])
             
             if ids:
-                st.success(f"Trouvé : {len(ids)} articles. Analyse IA en cours...")
-                
-                # Configuration de l'IA Gemini
+                st.success(f"Trouvé {len(ids)} articles ! Analyse IA...")
                 genai.configure(api_key=G_KEY)
                 model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # Création des liens PubMed
-                links = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
+                liens = [f"https://pubmed.ncbi.nlm.nih.gov/{i}/" for i in ids]
+                prompt = f"Résume en français de façon très médicale ces articles : {liens}"
                 
-                # Prompt pour l'IA
-                prompt = f"Tu es un expert médical. Voici des liens d'articles récents : {links}. Fais une synthèse structurée en français pour chaque article."
-                
-                response = model.generate_content(prompt)
-                st.markdown(response.text)
+                res_ia = model.generate_content(prompt)
+                st.markdown(res_ia.text)
             else:
-                # Message si vraiment rien n'est trouvé
-                st.warning(f"PubMed ne renvoie aucun résultat pour '{term_en}' en {annee}. Vérifiez la connexion PubMed.")
+                # Si PubMed répond 0, on affiche l'URL pour comprendre pourquoi
+                st.warning(f"PubMed ne renvoie rien pour {term}. Voici l'URL testée :")
+                st.code(url)
         except Exception as e:
-            st.error(f"Erreur technique : {e}")
+            st.error(f"Erreur : {e}")
