@@ -21,14 +21,14 @@ except:
 # Spécialités étendues
 TRAD = {
     "Gynécologie": "Gynecology",
-    "Obstétrique": "Obstetrics",
-    "Anesthésie-Réanimation": "Anesthesiology",
     "Endocrinologie": "Endocrinology",
     "Médecine Générale": "General Medicine",
     "Cardiologie": "Cardiology",
     "Neurologie": "Neurology",
     "Oncologie": "Oncology",
-    "Pédiatrie": "Pediatrics"
+    "Pédiatrie": "Pediatrics",
+    "Anesthésie-Réanimation": "Anesthesiology",
+    "Obstétrique": "Obstetrics"
 }
 
 # Types d'études
