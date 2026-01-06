@@ -54,10 +54,10 @@ JOURNAUX_SPECIALITE = {
 
 # Sources supplémentaires
 SOURCES_SUPPLEMENTAIRES = {
-    "HAS (Haute Autorité de Santé)": "https://www.has-sante.fr",
-    "CNGOF (Collège National des Gynécologues et Obstétriciens Français)": "http://www.cngof.fr",
+    "HAS": "https://www.has-sante.fr",
+    "CNGOF": "http://www.cngof.fr",
     "Vidal": "https://www.vidal.fr",
-    "Cochrane Library": "https://www.cochranelibrary.com",
+    "Cochrane": "https://www.cochranelibrary.com",
     "UpToDate": "https://www.uptodate.com"
 }
 
@@ -65,22 +65,19 @@ SOURCES_SUPPLEMENTAIRES = {
 if 'historique' not in st.session_state:
     st.session_state.historique = []
 
-# Fonction pour parser une date au format dd/mm/yyyy
 def parse_date_fr(date_str):
-    """Convertit une date dd/mm/yyyy en objet date"""
+    """Convertit dd/mm/yyyy en date"""
     try:
         return datetime.strptime(date_str, "%d/%m/%Y").date()
     except:
         return None
 
-# Fonction pour formater une date en dd/mm/yyyy
 def format_date_fr(date_obj):
-    """Convertit un objet date en dd/mm/yyyy"""
+    """Convertit date en dd/mm/yyyy"""
     return date_obj.strftime("%d/%m/%Y")
 
-# Fonction pour récupérer le lien PDF
 def get_pdf_link(pmid):
-    """Récupère le lien du PDF en libre accès"""
+    """Récupère le lien PDF PMC"""
     try:
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
         params = {
@@ -104,9 +101,8 @@ def get_pdf_link(pmid):
     except:
         return None, None
 
-# Fonction pour vérifier les mots-clés
 def verifier_mots_cles_pubmed(mots_cles):
-    """Vérifie si les mots-clés existent dans PubMed"""
+    """Vérifie les mots-clés dans PubMed"""
     try:
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         params = {
@@ -124,28 +120,26 @@ def verifier_mots_cles_pubmed(mots_cles):
     except:
         return None, 0
 
-# Fonction pour traduire les mots-clés
 def traduire_mots_cles(mots_cles_fr, api_key):
-    """Traduit les mots-clés français en anglais"""
+    """Traduit mots-clés FR vers EN"""
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        prompt = f"""Traduis ces mots-clés médicaux français en anglais médical pour PubMed.
+        prompt = f"""Traduis ces mots-clés médicaux en anglais pour PubMed.
 Retourne UNIQUEMENT les termes anglais.
 
-Mots-clés français: {mots_cles_fr}
+Français: {mots_cles_fr}
 
-Termes anglais:"""
+Anglais:"""
         
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
         return mots_cles_fr
 
-# Fonction pour traduire un texte
 def traduire_texte(texte, api_key):
-    """Traduit un texte en français"""
+    """Traduit texte en français"""
     if not texte or texte == "Résumé non disponible":
         return texte
     
@@ -153,7 +147,7 @@ def traduire_texte(texte, api_key):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        prompt = f"""Traduis ce texte médical en français de manière professionnelle.
+        prompt = f"""Traduis ce texte médical en français.
 
 Texte:
 {texte}
@@ -167,7 +161,6 @@ Traduction:"""
             return f"[Quota dépassé]\n\n{texte}"
         return f"[Erreur]\n\n{texte}"
 
-# Fonction PDF
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
@@ -186,7 +179,7 @@ class PDF(FPDF):
         self.ln(3)
 
 def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_data):
-    """Génère un PDF complet"""
+    """Génère PDF complet"""
     pdf = PDF()
     pdf.add_page()
     
@@ -242,7 +235,7 @@ def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_da
     return pdf_output.getvalue()
 
 def recuperer_abstracts(pmids, traduire=False, api_key=None):
-    """Récupère les résumés depuis PubMed"""
+    """Récupère résumés PubMed"""
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     
     params = {
@@ -305,11 +298,11 @@ def recuperer_abstracts(pmids, traduire=False, api_key=None):
     return []
 
 def generer_fichier_notebooklm(synthese, articles_data):
-    """Génère un fichier pour NotebookLM"""
-    contenu = f"""# VEILLE MÉDICALE - SYNTHÈSE POUR PODCAST
+    """Génère fichier pour NotebookLM"""
+    contenu = f"""# VEILLE MEDICALE - SYNTHESE POUR PODCAST
 Date: {datetime.now().strftime("%d/%m/%Y")}
 
-## SYNTHÈSE PRINCIPALE
+## SYNTHESE PRINCIPALE
 
 {synthese}
 
@@ -320,12 +313,12 @@ Date: {datetime.now().strftime("%d/%m/%Y")}
     for i, article in enumerate(articles_data, 1):
         contenu += f"""
 ### Article {i}
-**Titre:** {article['title']}
-**Auteurs:** {', '.join(article['authors'][:5])}
-**Journal:** {article['journal']} ({article['year']})
-**PMID:** {article['pmid']}
+Titre: {article['title']}
+Auteurs: {', '.join(article['authors'][:5])}
+Journal: {article['journal']} ({article['year']})
+PMID: {article['pmid']}
 
-**Résumé:**
+Resume:
 {article['abstract_fr']}
 
 ---
@@ -334,7 +327,7 @@ Date: {datetime.now().strftime("%d/%m/%Y")}
     return contenu
 
 def sauvegarder_recherche(spec, periode, type_etude, langue, pmids, synthese, mots_cles=""):
-    """Sauvegarde la recherche"""
+    """Sauvegarde recherche"""
     recherche = {
         'date': datetime.now().strftime("%d/%m/%Y %H:%M"),
         'specialite': spec,
@@ -367,7 +360,7 @@ with tab1:
             mots_cles_custom = ""
             mots_cles_originaux = ""
             
-            st.subheader("📰 Journal (optionnel)")
+            st.subheader("📰 Journal")
             journaux_dispo = ["Tous"] + JOURNAUX_SPECIALITE.get(spec_fr, [])
             journal_selectionne = st.selectbox("Journal", journaux_dispo)
             
@@ -538,7 +531,7 @@ with tab1:
                 st.subheader("📚 Articles")
                 
                 for i, article in enumerate(articles_complets, 1):
-                    with st.expander(f"**Article {i}** - {article['title'][:80]}..."):
+                    with st.expander(f"Article {i} - {article['title'][:80]}..."):
                         st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
                         st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
                         
@@ -557,7 +550,7 @@ with tab1:
                                 st.markdown("**📄 PDF disponible**")
                                 st.link_button("📥 Accéder au PDF", pdf_url)
                             else:
-                                st.info("PDF non disponible en libre accès")
+                                st.info("PDF non disponible")
             
             st.divider()
             st.subheader("🤖 Synthèse IA")
@@ -581,22 +574,22 @@ with tab1:
 
 {len(ids)} articles PubMed.
 
-**Critères:** {spec_texte} | {periode_affichage} | {type_etude}
+Critères: {spec_texte} | {periode_affichage} | {type_etude}
 
-**Articles:**
+Articles:
 {contexte}
 
-**PMIDs:** {', '.join(ids)}
+PMIDs: {', '.join(ids)}
 
 Synthèse française:
 
-## 📊 Vue d'ensemble
-## 🔬 Tendances
-## 💡 Découvertes
-## 🏥 Implications
-## ⚠️ Limites
+## Vue ensemble
+## Tendances
+## Découvertes
+## Implications
+## Limites
 
-## 🔗 Sources
+## Sources
 {liens}"""
                     
                     response_ia = model.generate_content(prompt)
@@ -604,19 +597,10 @@ Synthèse française:
                     
                     st.markdown(synthese)
                     
-                    # Section Podcast NotebookLM
                     st.divider()
-                    st.subheader("🎙️ Créer un Podcast Audio")
+                    st.subheader("🎙️ Créer un Podcast")
                     
-                    st.info("""
-💡 **Générer un podcast automatiquement avec NotebookLM :**
-1. Téléchargez le fichier optimisé ci-dessous
-2. Allez sur [NotebookLM](https://notebooklm.google.com)
-3. Créez un nouveau notebook
-4. Importez le fichier téléchargé
-5. Cliquez sur "Generate Audio Overview"
-6. Un podcast conversationnel sera créé automatiquement (durée : 5-15 minutes selon le contenu)
-                    """)
+                    st.info("Générez un podcast audio avec NotebookLM : Téléchargez le fichier, importez-le sur notebooklm.google.com, puis cliquez sur Generate Audio Overview")
                     
                     fichier_notebooklm = generer_fichier_notebooklm(synthese, articles_complets)
                     
@@ -624,11 +608,10 @@ Synthèse française:
                     
                     with col_nlm1:
                         st.download_button(
-                            label="📥 Télécharger pour NotebookLM",
+                            label="📥 Fichier NotebookLM",
                             data=fichier_notebooklm,
-                            file_name=f"notebooklm_veille_{datetime.now().strftime('%Y%m%d')}.txt",
-                            mime="text/plain",
-                            help="Fichier optimisé pour générer un podcast"
+                            file_name=f"notebooklm_{datetime.now().strftime('%Y%m%d')}.txt",
+                            mime="text/plain"
                         )
                     
                     with col_nlm2:
@@ -647,7 +630,7 @@ Synthèse française:
                         mots_cles_originaux
                     )
                     
-                    st.success("✅ Sauvegardé !")
+                    st.success("✅ Sauvegardé")
                     
                     st.divider()
                     col1, col2 = st.columns(2)
@@ -692,7 +675,7 @@ with tab2:
         st.info("Aucune recherche")
     else:
         for i, rech in enumerate(st.session_state.historique):
-            titre = f"🔍 {rech['date']} - {rech['specialite']} - {rech['nb_articles']} articles"
+            titre = f"{rech['date']} - {rech['specialite']} - {rech['nb_articles']} articles"
             
             with st.expander(titre):
                 st.markdown(f"**Spécialité:** {rech['specialite']}")
@@ -707,8 +690,6 @@ with tab2:
 with tab3:
     st.header("🔗 Sources Complémentaires")
     
-    st.markdown("### Sources officielles")
-    
     for nom, url in SOURCES_SUPPLEMENTAIRES.items():
         st.markdown(f"**{nom}**")
         st.markdown(f"[Accéder]({url})")
@@ -716,11 +697,3 @@ with tab3:
 
 st.markdown("---")
 st.caption("💊 Veille médicale | PubMed + Gemini 2.5")
-```
-
-**Requirements.txt mis à jour (SANS PyPDF2) :**
-```
-streamlit
-google-generativeai
-requests
-fpdf
