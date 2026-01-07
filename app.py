@@ -6,7 +6,8 @@ from datetime import datetime, date, timedelta
 import xml.etree.ElementTree as ET
 from fpdf import FPDF
 import io
-import calendar
+import PyPDF2
+from io import BytesIO
 
 st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
 
@@ -16,6 +17,13 @@ try:
 except:
     st.error("⚠️ Clé GEMINI_KEY manquante dans les secrets")
     st.stop()
+
+# Noms des mois en français
+MOIS_FR = {
+    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
+    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
+    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
+}
 
 # Spécialités RÉORGANISÉES
 TRAD = {
@@ -84,11 +92,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.rcog.org.uk",
             "description": "Royal College of Obstetricians and Gynaecologists",
             "recherche": "https://www.rcog.org.uk/search?q="
-        },
-        "WHO Maternal Health": {
-            "url": "https://www.who.int/health-topics/maternal-health",
-            "description": "OMS - Santé maternelle",
-            "recherche": "https://www.who.int/search?query="
         }
     },
     "Anesthésie-Réanimation": {
@@ -96,16 +99,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://sfar.org",
             "description": "Société Française d'Anesthésie et de Réanimation",
             "recherche": "https://sfar.org/?s="
-        },
-        "ASA": {
-            "url": "https://www.asahq.org",
-            "description": "American Society of Anesthesiologists",
-            "recherche": "https://www.asahq.org/search?q="
-        },
-        "SRLF": {
-            "url": "https://www.srlf.org",
-            "description": "Société de Réanimation de Langue Française",
-            "recherche": "https://www.srlf.org/?s="
         }
     },
     "Endocrinologie": {
@@ -113,16 +106,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.sfendocrino.org",
             "description": "Société Française d'Endocrinologie",
             "recherche": "https://www.sfendocrino.org/?s="
-        },
-        "Endocrine Society": {
-            "url": "https://www.endocrine.org",
-            "description": "Guidelines endocrinologie",
-            "recherche": "https://www.endocrine.org/search?q="
-        },
-        "ADA": {
-            "url": "https://diabetes.org",
-            "description": "American Diabetes Association",
-            "recherche": "https://diabetes.org/search?q="
         }
     },
     "Médecine Générale": {
@@ -130,16 +113,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.has-sante.fr",
             "description": "Haute Autorité de Santé",
             "recherche": "https://www.has-sante.fr/jcms/recherche?text="
-        },
-        "CMGE": {
-            "url": "https://www.cnge.fr",
-            "description": "Collège National des Généralistes Enseignants",
-            "recherche": "https://www.cnge.fr/?s="
-        },
-        "Vidal": {
-            "url": "https://www.vidal.fr",
-            "description": "Base médicamenteuse française",
-            "recherche": "https://www.vidal.fr/recherche.html?q="
         }
     },
     "Chirurgie Gynécologique": {
@@ -147,16 +120,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "http://www.cngof.fr",
             "description": "Recommandations chirurgie gynéco",
             "recherche": "http://www.cngof.fr/?s="
-        },
-        "AAGL": {
-            "url": "https://www.aagl.org",
-            "description": "Association for Gynecologic Laparoscopy",
-            "recherche": "https://www.aagl.org/search?q="
-        },
-        "SGO": {
-            "url": "https://www.sgo.org",
-            "description": "Society of Gynecologic Oncology",
-            "recherche": "https://www.sgo.org/search?q="
         }
     },
     "Infertilité": {
@@ -164,16 +127,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.eshre.eu",
             "description": "European Society of Human Reproduction",
             "recherche": "https://www.eshre.eu/search?q="
-        },
-        "ASRM": {
-            "url": "https://www.asrm.org",
-            "description": "American Society for Reproductive Medicine",
-            "recherche": "https://www.asrm.org/search?q="
-        },
-        "CNGOF Fertilité": {
-            "url": "http://www.cngof.fr",
-            "description": "Recommandations françaises fertilité",
-            "recherche": "http://www.cngof.fr/?s="
         }
     },
     "Échographie Gynécologique": {
@@ -181,16 +134,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.isuog.org",
             "description": "International Society of Ultrasound in Obstetrics",
             "recherche": "https://www.isuog.org/search.html?q="
-        },
-        "CFEF": {
-            "url": "http://www.cfef.org",
-            "description": "Collège Français d'Échographie Fœtale",
-            "recherche": "http://www.cfef.org/?s="
-        },
-        "AIUM": {
-            "url": "https://www.aium.org",
-            "description": "American Institute of Ultrasound in Medicine",
-            "recherche": "https://www.aium.org/search?q="
         }
     },
     "Oncologie": {
@@ -198,16 +141,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.e-cancer.fr",
             "description": "Institut National du Cancer",
             "recherche": "https://www.e-cancer.fr/Recherche?SearchText="
-        },
-        "NCCN": {
-            "url": "https://www.nccn.org",
-            "description": "National Comprehensive Cancer Network",
-            "recherche": "https://www.nccn.org/search?q="
-        },
-        "ESMO": {
-            "url": "https://www.esmo.org",
-            "description": "European Society for Medical Oncology",
-            "recherche": "https://www.esmo.org/search?q="
         }
     },
     "Pédiatrie": {
@@ -215,16 +148,6 @@ SOURCES_PAR_SPECIALITE = {
             "url": "https://www.sfpediatrie.com",
             "description": "Société Française de Pédiatrie",
             "recherche": "https://www.sfpediatrie.com/?s="
-        },
-        "AAP": {
-            "url": "https://www.aap.org",
-            "description": "American Academy of Pediatrics",
-            "recherche": "https://www.aap.org/search?q="
-        },
-        "WHO Child Health": {
-            "url": "https://www.who.int/health-topics/child-health",
-            "description": "OMS - Santé de l'enfant",
-            "recherche": "https://www.who.int/search?query="
         }
     }
 }
@@ -232,8 +155,6 @@ SOURCES_PAR_SPECIALITE = {
 # Initialiser session_state
 if 'historique' not in st.session_state:
     st.session_state.historique = []
-if 'derniere_recherche' not in st.session_state:
-    st.session_state.derniere_recherche = None
 if 'articles_courants' not in st.session_state:
     st.session_state.articles_courants = []
 if 'synthese_courante' not in st.session_state:
@@ -252,6 +173,12 @@ if 'sources_complementaires_contenu' not in st.session_state:
     st.session_state.sources_complementaires_contenu = []
 if 'synthese_enrichie' not in st.session_state:
     st.session_state.synthese_enrichie = ""
+if 'pdfs_extraits' not in st.session_state:
+    st.session_state.pdfs_extraits = {}
+if 'articles_previsualises' not in st.session_state:
+    st.session_state.articles_previsualises = []
+if 'mode_etape' not in st.session_state:
+    st.session_state.mode_etape = 1  # 1 = prévisualisation, 2 = analyse détaillée
 
 def get_pdf_link(pmid):
     """Récupère le lien PDF PMC"""
@@ -278,6 +205,77 @@ def get_pdf_link(pmid):
     except:
         return None, None
 
+def telecharger_et_extraire_pdf(pmid, traduire=False, api_key=None, progress_callback=None):
+    """Télécharge, extrait et optionnellement traduit le contenu d'un PDF"""
+    try:
+        pdf_url, pmc_id = get_pdf_link(pmid)
+        
+        if not pdf_url:
+            return None, "PDF non disponible"
+        
+        if progress_callback:
+            progress_callback(f"Téléchargement PDF PMID {pmid}...")
+        
+        response = requests.get(pdf_url, timeout=30)
+        
+        if response.status_code != 200:
+            return None, f"Erreur téléchargement: {response.status_code}"
+        
+        if progress_callback:
+            progress_callback(f"Extraction texte PMID {pmid}...")
+        
+        try:
+            pdf_file = BytesIO(response.content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            
+            texte_complet = ""
+            nb_pages = len(pdf_reader.pages)
+            max_pages = min(nb_pages, 20)
+            
+            for i in range(max_pages):
+                page = pdf_reader.pages[i]
+                texte_page = page.extract_text()
+                texte_complet += texte_page + "\n\n"
+            
+            if len(texte_complet) > 15000:
+                texte_complet = texte_complet[:15000] + "\n\n[PDF tronqué]"
+            
+            if traduire and api_key:
+                if progress_callback:
+                    progress_callback(f"Traduction PDF PMID {pmid}...")
+                
+                try:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel('gemini-2.5-flash')
+                    
+                    chunk_size = 5000
+                    texte_traduit = ""
+                    
+                    for i in range(0, len(texte_complet), chunk_size):
+                        chunk = texte_complet[i:i+chunk_size]
+                        
+                        prompt_trad = f"""Traduis en français:
+
+{chunk}
+
+Traduction:"""
+                        
+                        response_trad = model.generate_content(prompt_trad)
+                        texte_traduit += response_trad.text + "\n\n"
+                    
+                    return texte_traduit, None
+                    
+                except:
+                    return texte_complet + "\n\n[Traduction échouée]", None
+            
+            return texte_complet, None
+            
+        except Exception as e:
+            return None, f"Erreur extraction: {str(e)}"
+    
+    except Exception as e:
+        return None, f"Erreur: {str(e)}"
+
 def verifier_mots_cles_pubmed(mots_cles):
     """Vérifie les mots-clés dans PubMed"""
     try:
@@ -303,10 +301,9 @@ def traduire_mots_cles(mots_cles_fr, api_key):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        prompt = f"""Traduis ces mots-clés médicaux en anglais pour PubMed.
-Retourne UNIQUEMENT les termes anglais.
+        prompt = f"""Traduis en anglais médical pour PubMed:
 
-Français: {mots_cles_fr}
+{mots_cles_fr}
 
 Anglais:"""
         
@@ -324,25 +321,150 @@ def traduire_texte(texte, api_key):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        prompt = f"""Traduis ce texte médical en français.
+        prompt = f"""Traduis en français:
 
-Texte:
 {texte}
 
 Traduction:"""
         
         response = model.generate_content(prompt)
         return response.text.strip()
-    except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return f"[Quota dépassé]\n\n{texte}"
-        return f"[Erreur]\n\n{texte}"
+    except:
+        return texte
 
-def rechercher_source_complementaire(url_recherche, mots_cles):
-    """Simule une recherche sur une source complémentaire"""
-    # Note: En production, ceci utiliserait web scraping ou API
-    # Pour l'instant, on simule le résultat
-    return f"Résultats simulés pour '{mots_cles}' sur {url_recherche}"
+def recuperer_titres_rapides(pmids, traduire_titres=False, api_key=None):
+    """Récupère UNIQUEMENT les titres, journaux et dates pour prévisualisation rapide"""
+    base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+    
+    params = {
+        "db": "pubmed",
+        "id": ",".join(pmids),
+        "retmode": "xml",
+        "rettype": "abstract"
+    }
+    
+    try:
+        response = requests.get(base_url, params=params, timeout=15)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            articles_data = []
+            
+            for article in root.findall('.//PubmedArticle'):
+                pmid = article.find('.//PMID').text if article.find('.//PMID') is not None else "N/A"
+                
+                title_elem = article.find('.//ArticleTitle')
+                title = title_elem.text if title_elem is not None else "Titre non disponible"
+                
+                # Traduire le titre si demandé
+                title_fr = title
+                if traduire_titres and title != "Titre non disponible" and api_key:
+                    title_fr = traduire_texte(title, api_key)
+                
+                journal_elem = article.find('.//Journal/Title')
+                journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
+                
+                year_elem = article.find('.//PubDate/Year')
+                year = year_elem.text if year_elem is not None else "N/A"
+                
+                month_elem = article.find('.//PubDate/Month')
+                month = month_elem.text if month_elem is not None else ""
+                
+                day_elem = article.find('.//PubDate/Day')
+                day = day_elem.text if day_elem is not None else ""
+                
+                # Construire la date
+                if month and day:
+                    date_pub = f"{day}/{month}/{year}"
+                elif month:
+                    date_pub = f"{month} {year}"
+                else:
+                    date_pub = year
+                
+                articles_data.append({
+                    'pmid': pmid,
+                    'title': title,
+                    'title_fr': title_fr,
+                    'journal': journal,
+                    'year': year,
+                    'date_pub': date_pub
+                })
+            
+            return articles_data
+    except Exception as e:
+        st.warning(f"Erreur: {str(e)}")
+        return []
+    
+    return []
+
+def recuperer_abstracts(pmids, mode_contenu="tous", traduire=False, api_key=None):
+    """Récupère les articles selon le mode choisi"""
+    base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+    
+    params = {
+        "db": "pubmed",
+        "id": ",".join(pmids),
+        "retmode": "xml",
+        "rettype": "abstract"
+    }
+    
+    try:
+        response = requests.get(base_url, params=params, timeout=15)
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            articles_data = []
+            
+            for article in root.findall('.//PubmedArticle'):
+                pmid = article.find('.//PMID').text if article.find('.//PMID') is not None else "N/A"
+                
+                title_elem = article.find('.//ArticleTitle')
+                title = title_elem.text if title_elem is not None else "Titre non disponible"
+                
+                # Récupérer le résumé seulement si nécessaire
+                if mode_contenu in ["tous", "resume"]:
+                    abstract_elem = article.find('.//AbstractText')
+                    abstract = abstract_elem.text if abstract_elem is not None else "Résumé non disponible"
+                else:
+                    abstract = "Non récupéré (mode titre uniquement)"
+                
+                abstract_fr = abstract
+                if traduire and abstract != "Résumé non disponible" and abstract != "Non récupéré (mode titre uniquement)" and api_key:
+                    abstract_fr = traduire_texte(abstract, api_key)
+                
+                authors = []
+                for author in article.findall('.//Author'):
+                    lastname = author.find('LastName')
+                    forename = author.find('ForeName')
+                    if lastname is not None:
+                        name = lastname.text
+                        if forename is not None:
+                            name = f"{forename.text} {name}"
+                        authors.append(name)
+                
+                journal_elem = article.find('.//Journal/Title')
+                journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
+                
+                year_elem = article.find('.//PubDate/Year')
+                year = year_elem.text if year_elem is not None else "N/A"
+                
+                articles_data.append({
+                    'pmid': pmid,
+                    'title': title,
+                    'abstract': abstract,
+                    'abstract_fr': abstract_fr,
+                    'authors': authors,
+                    'journal': journal,
+                    'year': year,
+                    'pdf_texte': None,
+                    'pdf_disponible': False,
+                    'pdf_traduit': False
+                })
+            
+            return articles_data
+    except Exception as e:
+        st.warning(f"Erreur: {str(e)}")
+        return []
+    
+    return []
 
 class PDF(FPDF):
     def header(self):
@@ -360,51 +482,6 @@ class PDF(FPDF):
         self.set_fill_color(200, 220, 255)
         self.cell(0, 10, title, 0, 1, 'L', 1)
         self.ln(3)
-
-def generer_pdf_enrichi(spec, periode, synthese_pubmed, sources_complementaires, synthese_enrichie):
-    """Génère PDF avec PubMed + Sources complémentaires"""
-    pdf = PDF()
-    pdf.add_page()
-    
-    pdf.set_font('Arial', 'B', 20)
-    pdf.ln(30)
-    pdf.cell(0, 15, 'VEILLE MEDICALE ENRICHIE', 0, 1, 'C')
-    pdf.ln(10)
-    
-    pdf.set_font('Arial', '', 12)
-    pdf.cell(0, 8, f'Specialite: {spec}', 0, 1, 'C')
-    pdf.cell(0, 8, f'Periode: {periode}', 0, 1, 'C')
-    pdf.cell(0, 8, f'Date: {datetime.now().strftime("%d/%m/%Y")}', 0, 1, 'C')
-    
-    # SYNTHÈSE ENRICHIE
-    pdf.add_page()
-    pdf.section_title('SYNTHESE ENRICHIE (PubMed + Sources)')
-    
-    try:
-        synthese_clean = synthese_enrichie.encode('latin-1', 'ignore').decode('latin-1')
-    except:
-        synthese_clean = synthese_enrichie.encode('ascii', 'ignore').decode('ascii')
-    
-    pdf.set_font('Arial', '', 10)
-    pdf.multi_cell(0, 5, synthese_clean)
-    
-    # SOURCES UTILISÉES
-    pdf.add_page()
-    pdf.section_title('SOURCES COMPLEMENTAIRES')
-    
-    for source in sources_complementaires:
-        pdf.set_font('Arial', 'B', 11)
-        pdf.cell(0, 8, f'{source["nom"]}', 0, 1)
-        pdf.set_font('Arial', '', 10)
-        pdf.cell(0, 6, f'URL: {source["url"]}', 0, 1)
-        pdf.ln(3)
-    
-    pdf_output = io.BytesIO()
-    pdf_string = pdf.output(dest='S').encode('latin-1')
-    pdf_output.write(pdf_string)
-    pdf_output.seek(0)
-    
-    return pdf_output.getvalue()
 
 def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_data):
     """Génère PDF complet"""
@@ -448,11 +525,12 @@ def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_da
         pdf.multi_cell(0, 5, title_clean)
         pdf.ln(2)
         
-        try:
-            abstract_clean = article['abstract_fr'].encode('latin-1', 'ignore').decode('latin-1')
-        except:
-            abstract_clean = article['abstract_fr'].encode('ascii', 'ignore').decode('ascii')
-        pdf.multi_cell(0, 4, abstract_clean)
+        if article.get('abstract_fr'):
+            try:
+                abstract_clean = article['abstract_fr'].encode('latin-1', 'ignore').decode('latin-1')
+            except:
+                abstract_clean = article['abstract_fr'].encode('ascii', 'ignore').decode('ascii')
+            pdf.multi_cell(0, 4, abstract_clean)
         pdf.ln(5)
     
     pdf_output = io.BytesIO()
@@ -462,79 +540,16 @@ def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_da
     
     return pdf_output.getvalue()
 
-def recuperer_abstracts(pmids, traduire=False, api_key=None):
-    """Récupère résumés PubMed"""
-    base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-    
-    params = {
-        "db": "pubmed",
-        "id": ",".join(pmids),
-        "retmode": "xml",
-        "rettype": "abstract"
-    }
-    
-    try:
-        response = requests.get(base_url, params=params, timeout=15)
-        if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            articles_data = []
-            
-            for article in root.findall('.//PubmedArticle'):
-                pmid = article.find('.//PMID').text if article.find('.//PMID') is not None else "N/A"
-                
-                title_elem = article.find('.//ArticleTitle')
-                title = title_elem.text if title_elem is not None else "Titre non disponible"
-                
-                abstract_elem = article.find('.//AbstractText')
-                abstract = abstract_elem.text if abstract_elem is not None else "Résumé non disponible"
-                
-                abstract_fr = abstract
-                if traduire and abstract != "Résumé non disponible" and api_key:
-                    abstract_fr = traduire_texte(abstract, api_key)
-                
-                authors = []
-                for author in article.findall('.//Author'):
-                    lastname = author.find('LastName')
-                    forename = author.find('ForeName')
-                    if lastname is not None:
-                        name = lastname.text
-                        if forename is not None:
-                            name = f"{forename.text} {name}"
-                        authors.append(name)
-                
-                journal_elem = article.find('.//Journal/Title')
-                journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
-                
-                year_elem = article.find('.//PubDate/Year')
-                year = year_elem.text if year_elem is not None else "N/A"
-                
-                articles_data.append({
-                    'pmid': pmid,
-                    'title': title,
-                    'abstract': abstract,
-                    'abstract_fr': abstract_fr,
-                    'authors': authors,
-                    'journal': journal,
-                    'year': year
-                })
-            
-            return articles_data
-    except Exception as e:
-        st.warning(f"Erreur: {str(e)}")
-        return []
-    
-    return []
-
-def generer_fichier_notebooklm(synthese, articles_data):
+def generer_fichier_notebooklm(synthese, articles_data, inclure_pdfs=False):
     """Génère fichier pour NotebookLM"""
-    contenu = f"""# VEILLE MEDICALE - SYNTHESE POUR PODCAST
+    contenu = f"""# VEILLE MEDICALE - PODCAST
 Date: {datetime.now().strftime("%d/%m/%Y")}
 
-## SYNTHESE PRINCIPALE
+## SYNTHESE
 
 {synthese}
 
-## ARTICLES SOURCES
+## ARTICLES
 
 """
     
@@ -542,39 +557,19 @@ Date: {datetime.now().strftime("%d/%m/%Y")}
         contenu += f"""
 ### Article {i}
 Titre: {article['title']}
-Auteurs: {', '.join(article['authors'][:5])}
+Auteurs: {', '.join(article.get('authors', [])[:5])}
 Journal: {article['journal']} ({article['year']})
 PMID: {article['pmid']}
 
-Resume:
-{article['abstract_fr']}
-
----
 """
-    
-    return contenu
-
-def generer_fichier_notebooklm_enrichi(synthese_enrichie, sources):
-    """Génère fichier NotebookLM avec sources complémentaires"""
-    contenu = f"""# VEILLE MEDICALE ENRICHIE - SYNTHESE POUR PODCAST
-Date: {datetime.now().strftime("%d/%m/%Y")}
-
-## SYNTHESE ENRICHIE (PubMed + Sources Complémentaires)
-
-{synthese_enrichie}
-
-## SOURCES COMPLEMENTAIRES UTILISEES
-
-"""
-    
-    for source in sources:
-        contenu += f"""
-### {source['nom']}
-URL: {source['url']}
-Type: {source['type']}
-
----
-"""
+        
+        if article.get('abstract_fr'):
+            contenu += f"Resume:\n{article['abstract_fr']}\n\n"
+        
+        if inclure_pdfs and article.get('pdf_texte'):
+            contenu += f"PDF complet:\n{article['pdf_texte'][:5000]}...\n\n"
+        
+        contenu += "---\n"
     
     return contenu
 
@@ -597,538 +592,438 @@ def sauvegarder_recherche(spec, periode, type_etude, langue, pmids, synthese, mo
 
 # Interface principale
 st.title("🩺 Veille Médicale Professionnelle")
-st.markdown("*Analyse avancée des publications PubMed avec IA*")
+st.markdown("*Recherche avancée en 2 étapes : Prévisualisation puis Analyse détaillée*")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources Directes", "🎙️ Guide Podcast"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources", "🎙️ Podcast"])
 
 with tab1:
-    with st.sidebar:
-        st.header("⚙️ Configuration")
+    # ÉTAPE 1 : PRÉVISUALISATION
+    if st.session_state.mode_etape == 1:
+        st.header("📋 Étape 1 : Prévisualisation des articles")
         
-        mode_recherche = st.radio("Mode", ["Par spécialité", "Par mots-clés"], horizontal=True)
-        
-        if mode_recherche == "Par spécialité":
-            spec_fr = st.selectbox("🏥 Spécialité", list(TRAD.keys()))
-            mots_cles_custom = ""
-            mots_cles_originaux = ""
+        with st.sidebar:
+            st.header("⚙️ Paramètres de recherche")
             
-            st.subheader("📰 Journal")
-            journaux_dispo = ["Tous"] + JOURNAUX_SPECIALITE.get(spec_fr, [])
-            journal_selectionne = st.selectbox("Journal", journaux_dispo)
+            mode_recherche = st.radio("Mode", ["Par spécialité", "Par mots-clés"])
             
-        else:
-            spec_fr = None
-            journal_selectionne = "Tous"
-            
-            inclure_specialite = st.checkbox("🔬 Inclure spécialité", value=False)
-            if inclure_specialite:
-                spec_combo = st.selectbox("Spécialité", list(TRAD.keys()))
+            if mode_recherche == "Par spécialité":
+                spec_fr = st.selectbox("🏥 Spécialité", list(TRAD.keys()))
+                mots_cles_custom = ""
+                
+                st.subheader("📰 Journal")
+                journaux_dispo = ["Tous"] + JOURNAUX_SPECIALITE.get(spec_fr, [])
+                journal_selectionne = st.selectbox("Journal", journaux_dispo)
             else:
-                spec_combo = None
+                spec_fr = None
+                journal_selectionne = "Tous"
+                
+                mots_cles_custom = st.text_area("🔎 Mots-clés", height=80)
             
-            mots_cles_custom = st.text_area(
-                "🔎 Mots-clés",
-                placeholder="Ex: diabète gestationnel",
-                height=80
+            st.subheader("🎯 Zone")
+            zone_recherche = st.radio("Chercher dans:", ["Titre et résumé", "Titre uniquement", "Résumé uniquement"])
+            
+            st.subheader("📅 Période")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Début**")
+                jour_debut = st.selectbox("Jour", range(1, 32), index=0, key="j1")
+                mois_debut = st.selectbox("Mois", range(1, 13), index=0, key="m1", format_func=lambda x: MOIS_FR[x])
+                annee_debut = st.selectbox("Année", range(2000, 2027), index=24, key="a1")
+            
+            with col2:
+                st.write("**Fin**")
+                jour_fin = st.selectbox("Jour", range(1, 32), index=date.today().day-1, key="j2")
+                mois_fin = st.selectbox("Mois", range(1, 13), index=date.today().month-1, key="m2", format_func=lambda x: MOIS_FR[x])
+                annee_fin = st.selectbox("Année", range(2000, 2027), index=26, key="a2")
+            
+            try:
+                date_debut = date(annee_debut, mois_debut, jour_debut)
+            except:
+                date_debut = date(2024, 1, 1)
+            
+            try:
+                date_fin = date(annee_fin, mois_fin, jour_fin)
+            except:
+                date_fin = date.today()
+            
+            st.subheader("🔬 Filtres")
+            
+            # MODE DE CONTENU - NOUVELLE OPTION
+            st.markdown("**Type de contenu:**")
+            mode_contenu = st.radio(
+                "Récupérer:",
+                ["Tous (titre + résumé + PDF si dispo)", 
+                 "Titre et résumé uniquement",
+                 "Titre uniquement",
+                 "PDF complets uniquement"],
+                help="Choisissez le niveau de détail souhaité"
             )
-            mots_cles_originaux = mots_cles_custom
             
-            if mots_cles_custom:
-                if st.button("🔍 Vérifier"):
-                    with st.spinner("Vérification..."):
-                        mots_cles_en = traduire_mots_cles(mots_cles_custom, G_KEY)
-                        existe, count = verifier_mots_cles_pubmed(mots_cles_en)
-                        
-                        if existe:
-                            st.success(f"✅ {count:,} articles")
-                        else:
-                            st.warning("⚠️ Aucun article")
-        
-        st.subheader("🎯 Zone")
-        zone_recherche = st.radio(
-            "Chercher dans:",
-            ["Titre et résumé", "Titre uniquement", "Résumé uniquement"]
-        )
-        
-        # Sélecteurs à rouleau pour les dates
-        st.subheader("📅 Période")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Date de début**")
-            jour_debut = st.selectbox("Jour", range(1, 32), index=0, key="jour_debut")
-            mois_debut = st.selectbox("Mois", range(1, 13), index=0, key="mois_debut", 
-                                     format_func=lambda x: calendar.month_name[x])
-            annee_debut = st.selectbox("Année", range(2000, 2027), index=24, key="annee_debut")
-        
-        with col2:
-            st.write("**Date de fin**")
-            jour_fin = st.selectbox("Jour", range(1, 32), index=date.today().day-1, key="jour_fin")
-            mois_fin = st.selectbox("Mois", range(1, 13), index=date.today().month-1, key="mois_fin",
-                                   format_func=lambda x: calendar.month_name[x])
-            annee_fin = st.selectbox("Année", range(2000, 2027), index=26, key="annee_fin")
-        
-        # Créer les objets date
-        try:
-            date_debut = date(annee_debut, mois_debut, jour_debut)
-        except:
-            st.error("⚠️ Date de début invalide")
-            date_debut = date(2024, 1, 1)
-        
-        try:
-            date_fin = date(annee_fin, mois_fin, jour_fin)
-        except:
-            st.error("⚠️ Date de fin invalide")
-            date_fin = date.today()
-        
-        if date_debut > date_fin:
-            st.error("⚠️ La date de début doit être avant la date de fin")
-        
-        st.subheader("🔓 Accès")
-        acces_libre = st.checkbox("📖 PDF gratuit uniquement", value=False)
-        
-        st.subheader("🔬 Filtres")
-        type_etude = st.selectbox("Type", list(TYPES_ETUDE.keys()))
-        
-        langue = st.selectbox("Langue", [
-            "Toutes",
-            "Anglais",
-            "Français",
-            "Espagnol"
-        ])
-        
-        traduire_abstracts = st.checkbox("🌐 Traduire", value=True)
-        
-        nb = st.slider("📊 Articles", 1, 20, 5)
-
-    if st.button("🔍 Lancer", type="primary", use_container_width=True):
-        
-        if mode_recherche == "Par mots-clés" and not mots_cles_custom:
-            st.error("⚠️ Entrez des mots-clés")
-            st.stop()
-        
-        if date_debut > date_fin:
-            st.error("⚠️ Période invalide")
-            st.stop()
-        
-        if mode_recherche == "Par spécialité":
-            term = TRAD[spec_fr]
-            display_term = spec_fr
-        else:
-            with st.spinner("🌐 Traduction..."):
-                term = traduire_mots_cles(mots_cles_custom, G_KEY)
+            type_etude = st.selectbox("Type d'étude", list(TYPES_ETUDE.keys()))
+            langue = st.selectbox("Langue", ["Toutes", "Anglais", "Français", "Espagnol"])
             
-            if inclure_specialite and spec_combo:
-                term = f"{term} AND {TRAD[spec_combo]}"
+            # Nombre MAX de résultats à prévisualiser
+            nb_max = st.slider("📊 Nb max de résultats", 10, 500, 50, step=10)
             
-            display_term = f"Mots-clés: {mots_cles_custom}"
-            st.info(f"🔄 {term}")
+            traduire_titres = st.checkbox("🌐 Traduire les titres en français", value=True)
         
-        query_parts = [term]
-        
-        if zone_recherche == "Titre uniquement":
-            query_parts[0] = f"{query_parts[0]}[Title]"
-        elif zone_recherche == "Résumé uniquement":
-            query_parts[0] = f"{query_parts[0]}[Abstract]"
-        
-        date_debut_pubmed = date_debut.strftime("%Y/%m/%d")
-        date_fin_pubmed = date_fin.strftime("%Y/%m/%d")
-        query_parts.append(f"{date_debut_pubmed}:{date_fin_pubmed}[pdat]")
-        
-        if acces_libre:
-            query_parts.append("free full text[sb]")
-        
-        if journal_selectionne != "Tous":
-            query_parts.append(f'"{journal_selectionne}"[Journal]')
-        
-        if TYPES_ETUDE[type_etude]:
-            query_parts.append(f"{TYPES_ETUDE[type_etude]}[ptyp]")
-        
-        langue_codes = {"Anglais": "eng", "Français": "fre", "Espagnol": "spa"}
-        if langue != "Toutes":
-            query_parts.append(f"{langue_codes[langue]}[la]")
-        
-        query = " AND ".join(query_parts)
-        
-        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-        
-        params = {
-            "db": "pubmed",
-            "term": query,
-            "retmode": "json",
-            "retmax": nb,
-            "sort": "relevance"
-        }
-        
-        periode_affichage = f"du {date_debut.strftime('%d/%m/%Y')} au {date_fin.strftime('%d/%m/%Y')}"
-        
-        try:
-            with st.spinner("🔎 Recherche..."):
-                response = requests.get(
-                    base_url,
-                    params=params,
-                    headers={'User-Agent': 'Streamlit App'},
-                    timeout=15
-                )
+        if st.button("🔍 LANCER LA PRÉVISUALISATION", type="primary", use_container_width=True):
             
-            if response.status_code != 200:
-                st.error(f"❌ Erreur: {response.status_code}")
+            if mode_recherche == "Par mots-clés" and not mots_cles_custom:
+                st.error("⚠️ Entrez des mots-clés")
                 st.stop()
             
-            data = response.json()
-            search_result = data.get("esearchresult", {})
-            ids = search_result.get("idlist", [])
-            count = search_result.get("count", "0")
+            if mode_recherche == "Par spécialité":
+                term = TRAD[spec_fr]
+                display_term = spec_fr
+            else:
+                with st.spinner("Traduction..."):
+                    term = traduire_mots_cles(mots_cles_custom, G_KEY)
+                display_term = f"Mots-clés: {mots_cles_custom}"
             
-            if not ids:
-                st.warning("⚠️ Aucun article trouvé")
-                st.stop()
+            query_parts = [term]
             
-            st.success(f"✅ {count} articles - Affichage de {len(ids)}")
+            if zone_recherche == "Titre uniquement":
+                query_parts[0] = f"{query_parts[0]}[Title]"
+            elif zone_recherche == "Résumé uniquement":
+                query_parts[0] = f"{query_parts[0]}[Abstract]"
             
-            with st.spinner("📄 Récupération..."):
-                articles_complets = recuperer_abstracts(ids, traduire=traduire_abstracts, api_key=G_KEY)
+            date_debut_pubmed = date_debut.strftime("%Y/%m/%d")
+            date_fin_pubmed = date_fin.strftime("%Y/%m/%d")
+            query_parts.append(f"{date_debut_pubmed}:{date_fin_pubmed}[pdat]")
             
-            # SAUVEGARDER dans session_state
-            st.session_state.articles_courants = articles_complets
-            st.session_state.pmids_courants = ids
-            st.session_state.info_recherche = {
-                'display_term': display_term,
-                'periode': periode_affichage,
-                'spec': spec_fr if mode_recherche == "Par spécialité" else "Personnalisé",
-                'type_etude': type_etude,
-                'langue': langue,
-                'mots_cles': mots_cles_originaux,
-                'acces_libre': acces_libre,
-                'specialite_originale': spec_fr
+            # Filtre PDF si mode PDF uniquement
+            if "PDF complets" in mode_contenu:
+                query_parts.append("free full text[sb]")
+            
+            if journal_selectionne != "Tous":
+                query_parts.append(f'"{journal_selectionne}"[Journal]')
+            
+            if TYPES_ETUDE[type_etude]:
+                query_parts.append(f"{TYPES_ETUDE[type_etude]}[ptyp]")
+            
+            langue_codes = {"Anglais": "eng", "Français": "fre", "Espagnol": "spa"}
+            if langue != "Toutes":
+                query_parts.append(f"{langue_codes[langue]}[la]")
+            
+            query = " AND ".join(query_parts)
+            
+            base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+            
+            params = {
+                "db": "pubmed",
+                "term": query,
+                "retmode": "json",
+                "retmax": nb_max,
+                "sort": "date"  # Tri chronologique (plus récent d'abord)
             }
             
-            if articles_complets:
-                st.subheader("📚 Articles")
+            try:
+                with st.spinner("Recherche..."):
+                    response = requests.get(base_url, params=params, headers={'User-Agent': 'Streamlit'}, timeout=15)
                 
-                for i, article in enumerate(articles_complets, 1):
-                    with st.expander(f"Article {i} - {article['title'][:80]}..."):
-                        st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
-                        st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
-                        
-                        if traduire_abstracts:
-                            st.markdown("**📖 Résumé (FR):**")
-                            st.write(article['abstract_fr'])
-                        else:
-                            st.markdown("**📖 Résumé:**")
-                            st.write(article['abstract'])
-                        
-                        if acces_libre:
-                            st.divider()
-                            pdf_url, pmc_id = get_pdf_link(article['pmid'])
-                            
-                            if pdf_url:
-                                st.markdown("**📄 PDF disponible**")
-                                st.link_button("📥 Accéder au PDF", pdf_url)
-                            else:
-                                st.info("PDF non disponible")
+                if response.status_code != 200:
+                    st.error(f"❌ Erreur: {response.status_code}")
+                    st.stop()
+                
+                data = response.json()
+                search_result = data.get("esearchresult", {})
+                ids = search_result.get("idlist", [])
+                count = search_result.get("count", "0")
+                
+                if not ids:
+                    st.warning("⚠️ Aucun article trouvé")
+                    st.stop()
+                
+                st.success(f"✅ {count} articles trouvés - Affichage de {len(ids)}")
+                
+                with st.spinner("Récupération des titres..."):
+                    articles_preview = recuperer_titres_rapides(ids, traduire_titres=traduire_titres, api_key=G_KEY)
+                
+                # SAUVEGARDER les articles prévisualisés
+                st.session_state.articles_previsualises = articles_preview
+                st.session_state.info_recherche = {
+                    'display_term': display_term,
+                    'periode': f"du {date_debut.strftime('%d/%m/%Y')} au {date_fin.strftime('%d/%m/%Y')}",
+                    'spec': spec_fr if mode_recherche == "Par spécialité" else "Personnalisé",
+                    'type_etude': type_etude,
+                    'langue': langue,
+                    'mode_contenu': mode_contenu,
+                    'zone_recherche': zone_recherche,
+                    'query': query
+                }
+                
+                # Passer à l'étape 2
+                st.session_state.mode_etape = 2
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ {str(e)}")
+    
+    # ÉTAPE 2 : SÉLECTION ET ANALYSE
+    elif st.session_state.mode_etape == 2:
+        st.header("📑 Étape 2 : Sélection des articles à analyser")
+        
+        if not st.session_state.articles_previsualises:
+            st.warning("Aucun article prévisualisé")
+            if st.button("↩️ Retour à l'étape 1"):
+                st.session_state.mode_etape = 1
+                st.rerun()
+            st.stop()
+        
+        st.info(f"**Recherche:** {st.session_state.info_recherche['display_term']} | **Période:** {st.session_state.info_recherche['periode']}")
+        
+        # AFFICHAGE DES ARTICLES AVEC SÉLECTION
+        st.markdown("### 📋 Sélectionnez les articles à analyser en détail")
+        
+        # Bouton pour tout sélectionner/désélectionner
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        
+        with col_btn1:
+            if st.button("✅ Tout sélectionner"):
+                for i in range(len(st.session_state.articles_previsualises)):
+                    st.session_state[f"select_{i}"] = True
+                st.rerun()
+        
+        with col_btn2:
+            if st.button("❌ Tout désélectionner"):
+                for i in range(len(st.session_state.articles_previsualises)):
+                    st.session_state[f"select_{i}"] = False
+                st.rerun()
+        
+        with col_btn3:
+            if st.button("↩️ Nouvelle recherche"):
+                st.session_state.mode_etape = 1
+                st.session_state.articles_previsualises = []
+                st.rerun()
+        
+        st.divider()
+        
+        # Liste des articles avec cases à cocher
+        articles_selectionnes = []
+        
+        for i, article in enumerate(st.session_state.articles_previsualises):
+            col_check, col_info = st.columns([0.1, 0.9])
             
+            with col_check:
+                selected = st.checkbox("", key=f"select_{i}", label_visibility="collapsed")
+            
+            with col_info:
+                st.markdown(f"**{i+1}. {article['title_fr']}**")
+                st.caption(f"📰 {article['journal']} | 📅 {article['date_pub']} | 🔗 PMID: {article['pmid']}")
+            
+            if selected:
+                articles_selectionnes.append(article['pmid'])
+            
+            if i < len(st.session_state.articles_previsualises) - 1:
+                st.divider()
+        
+        st.markdown(f"**{len(articles_selectionnes)} article(s) sélectionné(s)**")
+        
+        if len(articles_selectionnes) == 0:
+            st.warning("⚠️ Sélectionnez au moins un article")
+        elif len(articles_selectionnes) > 20:
+            st.warning("⚠️ Maximum 20 articles à la fois")
+        else:
             st.divider()
-            st.subheader("🤖 Synthèse IA")
             
-            with st.spinner("⏳ Analyse..."):
-                try:
-                    genai.configure(api_key=G_KEY)
-                    model = genai.GenerativeModel('gemini-2.5-flash')
+            # OPTIONS D'ANALYSE DÉTAILLÉE
+            st.subheader("⚙️ Options d'analyse détaillée")
+            
+            col_opt1, col_opt2 = st.columns(2)
+            
+            with col_opt1:
+                traduire_abstracts = st.checkbox("🌐 Traduire les résumés", value=True)
+                
+                mode_contenu_analyse = st.session_state.info_recherche['mode_contenu']
+                
+                if "PDF" in mode_contenu_analyse or "Tous" in mode_contenu_analyse:
+                    extraire_pdfs = st.checkbox("📄 Extraire le contenu des PDF", value=False)
                     
-                    contexte = ""
-                    if articles_complets:
+                    if extraire_pdfs:
+                        traduire_pdfs = st.checkbox("🌐 Traduire les PDF", value=True)
+                    else:
+                        traduire_pdfs = False
+                else:
+                    extraire_pdfs = False
+                    traduire_pdfs = False
+            
+            with col_opt2:
+                st.info(f"""
+**Analyse de {len(articles_selectionnes)} articles**
+
+Mode: {mode_contenu_analyse}
+Traduction résumés: {'Oui' if traduire_abstracts else 'Non'}
+Extraction PDF: {'Oui' if extraire_pdfs else 'Non'}
+                """)
+            
+            # BOUTON LANCER L'ANALYSE
+            if st.button("🚀 LANCER L'ANALYSE DÉTAILLÉE", type="primary", use_container_width=True):
+                
+                with st.spinner("📊 Analyse en cours..."):
+                    
+                    # Déterminer le mode de récupération
+                    if "Titre uniquement" in mode_contenu_analyse:
+                        mode_recup = "titre"
+                    elif "Titre et résumé" in mode_contenu_analyse:
+                        mode_recup = "resume"
+                    else:
+                        mode_recup = "tous"
+                    
+                    # Récupérer les détails des articles sélectionnés
+                    articles_complets = recuperer_abstracts(
+                        articles_selectionnes,
+                        mode_contenu=mode_recup,
+                        traduire=traduire_abstracts,
+                        api_key=G_KEY
+                    )
+                    
+                    # Extraction PDF si demandé
+                    if extraire_pdfs:
+                        st.info("📚 Extraction des PDF...")
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        pdfs_succes = 0
+                        
+                        for i, article in enumerate(articles_complets):
+                            progress = (i + 1) / len(articles_complets)
+                            progress_bar.progress(progress)
+                            status_text.text(f"PDF {i+1}/{len(articles_complets)} - PMID {article['pmid']}")
+                            
+                            pdf_texte, erreur = telecharger_et_extraire_pdf(
+                                article['pmid'],
+                                traduire=traduire_pdfs,
+                                api_key=G_KEY
+                            )
+                            
+                            if pdf_texte:
+                                article['pdf_texte'] = pdf_texte
+                                article['pdf_disponible'] = True
+                                article['pdf_traduit'] = traduire_pdfs
+                                pdfs_succes += 1
+                        
+                        progress_bar.empty()
+                        status_text.empty()
+                        
+                        if pdfs_succes > 0:
+                            st.success(f"✅ {pdfs_succes} PDF extraits")
+                    
+                    # GÉNÉRATION DE LA SYNTHÈSE IA
+                    st.divider()
+                    st.subheader("🤖 Synthèse IA")
+                    
+                    with st.spinner("Génération de la synthèse..."):
+                        genai.configure(api_key=G_KEY)
+                        model = genai.GenerativeModel('gemini-2.5-flash')
+                        
+                        contexte = ""
+                        pdfs_integres = 0
+                        
                         for art in articles_complets:
-                            resume = art['abstract_fr'] if traduire_abstracts else art['abstract']
-                            contexte += f"\n\nPMID {art['pmid']}:\n{art['title']}\n{resume}\n"
-                    
-                    liens = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{pmid}/" for pmid in ids])
-                    
-                    spec_texte = spec_fr if mode_recherche == "Par spécialité" else f"Mots-clés: {mots_cles_custom}"
-                    
-                    prompt = f"""Expert médical - Veille.
+                            contexte += f"\n\nPMID {art['pmid']}:\n{art['title']}\n"
+                            
+                            if art.get('pdf_texte'):
+                                contexte += f"PDF complet:\n{art['pdf_texte']}\n"
+                                pdfs_integres += 1
+                            elif art.get('abstract_fr'):
+                                contexte += f"Résumé: {art['abstract_fr']}\n"
+                        
+                        liens = "\n".join([f"- https://pubmed.ncbi.nlm.nih.gov/{pmid}/" for pmid in articles_selectionnes])
+                        
+                        prompt = f"""Expert médical.
 
-{len(ids)} articles PubMed.
-
-Critères: {spec_texte} | {periode_affichage} | {type_etude}
+{len(articles_selectionnes)} articles.
 
 Articles:
 {contexte}
 
-PMIDs: {', '.join(ids)}
-
 Synthèse française:
 
-## Vue ensemble
-## Tendances
-## Découvertes
+## Vue d'ensemble
+## Résultats
 ## Implications
 ## Limites
 
 ## Sources
 {liens}"""
-                    
-                    response_ia = model.generate_content(prompt)
-                    synthese = response_ia.text
-                    
-                    # SAUVEGARDER la synthèse
-                    st.session_state.synthese_courante = synthese
-                    
-                    st.markdown(synthese)
-                    
-                    # OPTION: Enrichir avec sources complémentaires
-                    st.divider()
-                    st.subheader("🔗 Enrichir avec Sources Complémentaires")
-                    
-                    specialite_recherche = spec_fr if mode_recherche == "Par spécialité" else None
-                    
-                    if specialite_recherche and specialite_recherche in SOURCES_PAR_SPECIALITE:
-                        st.info(f"Sources disponibles pour {specialite_recherche}")
                         
-                        sources_dispo = SOURCES_PAR_SPECIALITE[specialite_recherche]
-                        sources_selectionnees = st.multiselect(
-                            "Sélectionnez les sources à inclure:",
-                            list(sources_dispo.keys()),
-                            help="Les informations de ces sources seront ajoutées à votre synthèse"
+                        response_ia = model.generate_content(prompt)
+                        synthese = response_ia.text
+                        
+                        if pdfs_integres > 0:
+                            synthese = f"**📚 {pdfs_integres} PDF complets analysés**\n\n" + synthese
+                        
+                        st.session_state.synthese_courante = synthese
+                        st.session_state.articles_courants = articles_complets
+                        st.session_state.pmids_courants = articles_selectionnes
+                        
+                        st.markdown(synthese)
+                        
+                        # Génération des fichiers
+                        st.session_state.fichier_notebooklm = generer_fichier_notebooklm(
+                            synthese,
+                            articles_complets,
+                            inclure_pdfs=extraire_pdfs
                         )
                         
-                        if sources_selectionnees:
-                            if st.button("📚 Enrichir la synthèse", type="secondary"):
-                                with st.spinner("Enrichissement avec sources complémentaires..."):
-                                    # Préparer les sources
-                                    sources_info = []
-                                    for source_nom in sources_selectionnees:
-                                        source = sources_dispo[source_nom]
-                                        sources_info.append({
-                                            'nom': source_nom,
-                                            'url': source['url'],
-                                            'type': 'Recommandations officielles',
-                                            'description': source['description']
-                                        })
-                                    
-                                    st.session_state.sources_complementaires_contenu = sources_info
-                                    
-                                    # Générer synthèse enrichie
-                                    sources_text = "\n\n".join([
-                                        f"**{s['nom']}** ({s['url']}): {s['description']}"
-                                        for s in sources_info
-                                    ])
-                                    
-                                    prompt_enrichi = f"""Tu es un expert médical. Enrichis cette synthèse PubMed avec les sources complémentaires.
-
-**SYNTHESE PUBMED:**
-{synthese}
-
-**SOURCES COMPLEMENTAIRES A INTEGRER:**
-{sources_text}
-
-CONSIGNES:
-1. Crée une synthèse ENRICHIE qui combine intelligemment:
-   - Les données PubMed (recherche scientifique)
-   - Les recommandations officielles des sources complémentaires
-2. Structure:
-   ## Vue d'ensemble enrichie
-   ## Recherche récente (PubMed)
-   ## Recommandations officielles (Sources complémentaires)
-   ## Convergences et divergences
-   ## Implications pratiques
-3. Cite clairement les sources (PubMed vs Recommandations)
-4. Mets en avant les points de consensus
-5. Signale les divergences s'il y en a
-
-SYNTHESE ENRICHIE:"""
-                                    
-                                    response_enrichi = model.generate_content(prompt_enrichi)
-                                    st.session_state.synthese_enrichie = response_enrichi.text
-                                    
-                                    st.success("✅ Synthèse enrichie générée!")
-                                    st.markdown("### 📊 Synthèse Enrichie")
-                                    st.markdown(st.session_state.synthese_enrichie)
-                                    
-                                    # Générer fichiers enrichis
-                                    fichier_nlm_enrichi = generer_fichier_notebooklm_enrichi(
-                                        st.session_state.synthese_enrichie,
-                                        sources_info
-                                    )
-                                    
-                                    pdf_enrichi = generer_pdf_enrichi(
-                                        display_term,
-                                        periode_affichage,
-                                        synthese,
-                                        sources_info,
-                                        st.session_state.synthese_enrichie
-                                    )
-                                    
-                                    st.divider()
-                                    st.markdown("### 📥 Téléchargements Enrichis")
-                                    
-                                    col_e1, col_e2, col_e3 = st.columns(3)
-                                    
-                                    with col_e1:
-                                        st.download_button(
-                                            label="📥 TXT Enrichi",
-                                            data=st.session_state.synthese_enrichie,
-                                            file_name="synthese_enrichie.txt",
-                                            mime="text/plain",
-                                            key="dl_txt_enrichi"
-                                        )
-                                    
-                                    with col_e2:
-                                        st.download_button(
-                                            label="📄 PDF Enrichi",
-                                            data=pdf_enrichi,
-                                            file_name="veille_enrichie.pdf",
-                                            mime="application/pdf",
-                                            key="dl_pdf_enrichi"
-                                        )
-                                    
-                                    with col_e3:
-                                        st.download_button(
-                                            label="🎙️ NotebookLM Enrichi",
-                                            data=fichier_nlm_enrichi,
-                                            file_name="notebooklm_enrichi.txt",
-                                            mime="text/plain",
-                                            key="dl_nlm_enrichi"
-                                        )
-                    else:
-                        st.warning("Aucune source complémentaire pour cette recherche")
-                    
-                    # GÉNÉRER et SAUVEGARDER les fichiers standard
-                    st.session_state.fichier_notebooklm = generer_fichier_notebooklm(synthese, articles_complets)
-                    st.session_state.pdf_complet = generer_pdf_complet(
-                        display_term,
-                        periode_affichage,
-                        len(ids),
-                        ids,
-                        synthese,
-                        articles_complets
-                    )
-                    
-                    # Section Podcast
-                    st.divider()
-                    st.subheader("🎙️ Générer un Podcast")
-                    
-                    col_podcast1, col_podcast2 = st.columns(2)
-                    
-                    with col_podcast1:
-                        st.markdown("### 🇬🇧 NotebookLM (Anglais)")
-                        st.info("Podcast conversationnel automatique")
-                        
-                        st.download_button(
-                            label="📥 Fichier NotebookLM",
-                            data=st.session_state.fichier_notebooklm,
-                            file_name=f"notebooklm_{datetime.now().strftime('%Y%m%d')}.txt",
-                            mime="text/plain",
-                            key="download_notebooklm"
+                        st.session_state.pdf_complet = generer_pdf_complet(
+                            st.session_state.info_recherche['display_term'],
+                            st.session_state.info_recherche['periode'],
+                            len(articles_selectionnes),
+                            articles_selectionnes,
+                            synthese,
+                            articles_complets
                         )
                         
-                        st.link_button(
-                            label="🔗 Ouvrir NotebookLM",
-                            url="https://notebooklm.google.com"
-                        )
-                    
-                    with col_podcast2:
-                        st.markdown("### 🇫🇷 Script Français")
-                        st.info("Script optimisé pour audio français")
-                        
-                        if st.button("📝 Générer Script Français", type="secondary"):
-                            with st.spinner("Création script..."):
-                                try:
-                                    prompt_audio = f"""Producteur podcast médical français.
-
-Synthèse:
-{synthese}
-
-Crée un SCRIPT AUDIO 10 minutes.
-
-Format:
-
-[GÉNÉRIQUE]
-
-DR. MARIE: [texte]
-
-DR. THOMAS: [texte]
-
-Style naturel, ~1500 mots.
-
-SCRIPT:"""
-                                    
-                                    response_script = model.generate_content(prompt_audio)
-                                    st.session_state.script_audio_fr = response_script.text
-                                    
-                                except Exception as e:
-                                    st.error(f"❌ {str(e)}")
-                    
-                    if st.session_state.script_audio_fr:
+                        # Section téléchargements
                         st.divider()
-                        st.markdown("### 📜 Script Audio")
+                        st.subheader("📥 Téléchargements")
                         
-                        st.text_area(
-                            "Script:",
-                            st.session_state.script_audio_fr,
-                            height=300,
-                            key="display_script"
-                        )
+                        col_d1, col_d2, col_d3 = st.columns(3)
                         
-                        col_s1, col_s2 = st.columns(2)
-                        
-                        with col_s1:
+                        with col_d1:
                             st.download_button(
-                                label="📥 Script",
-                                data=st.session_state.script_audio_fr,
-                                file_name=f"script_{datetime.now().strftime('%Y%m%d')}.txt",
-                                mime="text/plain",
-                                key="download_script"
+                                "📥 TXT",
+                                synthese,
+                                f"synthese_{datetime.now().strftime('%Y%m%d')}.txt",
+                                key="dl_txt_final"
                             )
                         
-                        with col_s2:
-                            st.link_button(
-                                label="🎤 ElevenLabs",
-                                url="https://elevenlabs.io"
+                        with col_d2:
+                            st.download_button(
+                                "📄 PDF",
+                                st.session_state.pdf_complet,
+                                f"veille_{datetime.now().strftime('%Y%m%d')}.pdf",
+                                mime="application/pdf",
+                                key="dl_pdf_final"
                             )
-                    
-                    sauvegarder_recherche(
-                        spec_fr if mode_recherche == "Par spécialité" else "Personnalisé",
-                        periode_affichage,
-                        type_etude,
-                        langue,
-                        ids,
-                        synthese,
-                        mots_cles_originaux
-                    )
-                    
-                    st.success("✅ Sauvegardé")
-                    
-                    st.divider()
-                    st.markdown("### 📥 Téléchargements Standards")
-                    col1, col2 = st.columns(2)
-                    
-                    nom = spec_fr if mode_recherche == "Par spécialité" else "recherche"
-                    
-                    with col1:
-                        st.download_button(
-                            label="📥 TXT",
-                            data=synthese,
-                            file_name=f"synthese_{nom}.txt",
-                            mime="text/plain",
-                            key="download_txt"
+                        
+                        with col_d3:
+                            st.download_button(
+                                "🎙️ NotebookLM",
+                                st.session_state.fichier_notebooklm,
+                                f"podcast_{datetime.now().strftime('%Y%m%d')}.txt",
+                                key="dl_nlm_final"
+                            )
+                        
+                        sauvegarder_recherche(
+                            st.session_state.info_recherche['spec'],
+                            st.session_state.info_recherche['periode'],
+                            st.session_state.info_recherche['type_etude'],
+                            st.session_state.info_recherche['langue'],
+                            articles_selectionnes,
+                            synthese
                         )
-                    
-                    with col2:
-                        st.download_button(
-                            label="📄 PDF",
-                            data=st.session_state.pdf_complet,
-                            file_name=f"veille_{nom}.pdf",
-                            mime="application/pdf",
-                            key="download_pdf"
-                        )
-                    
-                except Exception as e:
-                    st.error(f"❌ {str(e)}")
-        
-        except Exception as e:
-            st.error(f"❌ {str(e)}")
+                        
+                        st.success("✅ Analyse terminée et sauvegardée!")
+                        
+                        if st.button("🔄 Nouvelle recherche"):
+                            st.session_state.mode_etape = 1
+                            st.session_state.articles_previsualises = []
+                            st.rerun()
 
 with tab2:
     st.header("📚 Historique")
@@ -1136,102 +1031,75 @@ with tab2:
     if not st.session_state.historique:
         st.info("Aucune recherche")
     else:
-        for i, rech in enumerate(st.session_state.historique):
-            titre = f"{rech['date']} - {rech['specialite']} - {rech['nb_articles']} articles"
-            
-            with st.expander(titre):
+        for rech in st.session_state.historique:
+            with st.expander(f"{rech['date']} - {rech['specialite']} - {rech['nb_articles']} articles"):
                 st.markdown(f"**Spécialité:** {rech['specialite']}")
                 if rech.get('mots_cles'):
                     st.markdown(f"**Mots-clés:** {rech['mots_cles']}")
                 st.markdown(f"**Période:** {rech['periode']}")
                 st.markdown(f"**PMIDs:** {', '.join(rech['pmids'])}")
-                
                 st.divider()
                 st.markdown(rech['synthese'])
 
 with tab3:
-    st.header("🔗 Recherche Directe sur Sources Complémentaires")
+    st.header("🔗 Sources Directes")
     
-    st.info("Recherchez directement sur les sites de référence sans passer par PubMed")
-    
-    # Sélection spécialité
-    specialite_source = st.selectbox(
-        "Choisissez une spécialité:",
-        list(SOURCES_PAR_SPECIALITE.keys()),
-        key="spec_source_directe"
-    )
+    specialite_source = st.selectbox("Spécialité:", list(SOURCES_PAR_SPECIALITE.keys()), key="spec_src")
     
     if specialite_source:
         sources_spec = SOURCES_PAR_SPECIALITE[specialite_source]
         
-        st.markdown(f"### Sources disponibles pour {specialite_source}")
-        
         for nom_source, info_source in sources_spec.items():
             with st.expander(f"📚 {nom_source}"):
-                st.markdown(f"**Description:** {info_source['description']}")
+                st.markdown(f"**{info_source['description']}**")
                 st.markdown(f"**URL:** {info_source['url']}")
                 
-                # Formulaire de recherche
-                mots_cles_source = st.text_input(
-                    f"Rechercher dans {nom_source}:",
-                    key=f"search_{nom_source}",
-                    placeholder="Ex: hypertension grossesse"
-                )
+                mots_cles_source = st.text_input(f"Rechercher:", key=f"s_{nom_source}")
                 
-                col_btn1, col_btn2 = st.columns(2)
+                col_b1, col_b2 = st.columns(2)
                 
-                with col_btn1:
+                with col_b1:
                     if mots_cles_source:
-                        url_recherche = f"{info_source['recherche']}{mots_cles_source}"
-                        st.link_button(
-                            f"🔍 Rechercher sur {nom_source}",
-                            url_recherche
-                        )
+                        st.link_button("🔍 Rechercher", f"{info_source['recherche']}{mots_cles_source}")
                 
-                with col_btn2:
-                    st.link_button(
-                        f"🏠 Accueil {nom_source}",
-                        info_source['url']
-                    )
+                with col_b2:
+                    st.link_button("🏠 Accueil", info_source['url'])
 
 with tab4:
-    st.header("🎙️ Guide Complet : Créer vos Podcasts")
+    st.header("🎙️ Guide Podcasts")
     
     st.markdown("""
-## 🇬🇧 Option 1 : NotebookLM (Anglais - Gratuit)
+## 🇬🇧 NotebookLM (Gratuit)
 
-### Étapes :
-1. Télécharger le fichier NotebookLM
-2. Ouvrir notebooklm.google.com
-3. Créer un nouveau notebook
-4. Importer votre fichier
-5. Cliquer sur "Audio Overview"
-6. Télécharger le MP3
+1. Télécharger fichier
+2. notebooklm.google.com
+3. Importer
+4. "Audio Overview"
+5. Télécharger MP3
 
-✅ Gratuit et illimité
-✅ Qualité exceptionnelle
+✅ Gratuit illimité
 
 ---
 
-## 🇫🇷 Option 2 : ElevenLabs (Français)
+## 🇫🇷 ElevenLabs
 
-### Plans:
-- **Gratuit**: 10 000 caractères/mois (~7 min)
-- **Starter (5$/mois)**: 30 000 caractères (~3-4 podcasts)
-- **Creator (22$/mois)**: 100 000 caractères (~10 podcasts)
-
-### Étapes:
-1. Générer script français dans l'app
-2. Créer compte sur elevenlabs.io
-3. Coller le script
-4. Choisir voix française
-5. Générer et télécharger
+**Plans:**
+- Starter (5$/mois): 30k caractères
+- Creator (22$/mois): 100k caractères
 
 ---
 
-## 💡 Recommandation
+## 🔍 Recherche en 2 étapes
 
-**Usage régulier:** NotebookLM (anglais) + ElevenLabs Starter (5$/mois) pour synthèses importantes en français
+**Étape 1:** Prévisualisation rapide
+- Tous les articles trouvés
+- Titres traduits
+- Tri chronologique
+
+**Étape 2:** Sélection manuelle
+- Choisissez 1 à 20 articles
+- Analyse détaillée
+- PDF complets optionnels
     """)
 
 st.markdown("---")
