@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta
 import xml.etree.ElementTree as ET
 from fpdf import FPDF
 import io
+import calendar
 
 st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
 
@@ -40,7 +41,7 @@ TYPES_ETUDE = {
     "Études cas-témoins": "Case-Control Studies"
 }
 
-# Journaux par spécialité (MISE À JOUR)
+# Journaux par spécialité
 JOURNAUX_SPECIALITE = {
     "Gynécologie": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Hum Reprod", "Fertil Steril", "Gynecol Surg"],
     "Obstétrique": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Ultrasound Obstet Gynecol", "J Matern Fetal Neonatal Med"],
@@ -54,50 +55,203 @@ JOURNAUX_SPECIALITE = {
     "Pédiatrie": ["Pediatrics", "JAMA Pediatr", "Arch Dis Child", "J Pediatr"]
 }
 
-# Sources supplémentaires
-SOURCES_SUPPLEMENTAIRES = {
-    "HAS": "https://www.has-sante.fr",
-    "CNGOF": "http://www.cngof.fr",
-    "Vidal": "https://www.vidal.fr",
-    "Cochrane": "https://www.cochranelibrary.com",
-    "UpToDate": "https://www.uptodate.com"
+# SOURCES COMPLÉMENTAIRES PAR SPÉCIALITÉ
+SOURCES_PAR_SPECIALITE = {
+    "Gynécologie": {
+        "CNGOF": {
+            "url": "http://www.cngof.fr",
+            "description": "Recommandations françaises en gynécologie",
+            "recherche": "http://www.cngof.fr/?s="
+        },
+        "ACOG": {
+            "url": "https://www.acog.org",
+            "description": "American College of Obstetricians and Gynecologists",
+            "recherche": "https://www.acog.org/search?q="
+        },
+        "HAS Gynéco": {
+            "url": "https://www.has-sante.fr",
+            "description": "Recommandations HAS en gynécologie",
+            "recherche": "https://www.has-sante.fr/jcms/recherche?text="
+        }
+    },
+    "Obstétrique": {
+        "CNGOF": {
+            "url": "http://www.cngof.fr",
+            "description": "Recommandations françaises en obstétrique",
+            "recherche": "http://www.cngof.fr/?s="
+        },
+        "RCOG": {
+            "url": "https://www.rcog.org.uk",
+            "description": "Royal College of Obstetricians and Gynaecologists",
+            "recherche": "https://www.rcog.org.uk/search?q="
+        },
+        "WHO Maternal Health": {
+            "url": "https://www.who.int/health-topics/maternal-health",
+            "description": "OMS - Santé maternelle",
+            "recherche": "https://www.who.int/search?query="
+        }
+    },
+    "Anesthésie-Réanimation": {
+        "SFAR": {
+            "url": "https://sfar.org",
+            "description": "Société Française d'Anesthésie et de Réanimation",
+            "recherche": "https://sfar.org/?s="
+        },
+        "ASA": {
+            "url": "https://www.asahq.org",
+            "description": "American Society of Anesthesiologists",
+            "recherche": "https://www.asahq.org/search?q="
+        },
+        "SRLF": {
+            "url": "https://www.srlf.org",
+            "description": "Société de Réanimation de Langue Française",
+            "recherche": "https://www.srlf.org/?s="
+        }
+    },
+    "Endocrinologie": {
+        "SFE": {
+            "url": "https://www.sfendocrino.org",
+            "description": "Société Française d'Endocrinologie",
+            "recherche": "https://www.sfendocrino.org/?s="
+        },
+        "Endocrine Society": {
+            "url": "https://www.endocrine.org",
+            "description": "Guidelines endocrinologie",
+            "recherche": "https://www.endocrine.org/search?q="
+        },
+        "ADA": {
+            "url": "https://diabetes.org",
+            "description": "American Diabetes Association",
+            "recherche": "https://diabetes.org/search?q="
+        }
+    },
+    "Médecine Générale": {
+        "HAS": {
+            "url": "https://www.has-sante.fr",
+            "description": "Haute Autorité de Santé",
+            "recherche": "https://www.has-sante.fr/jcms/recherche?text="
+        },
+        "CMGE": {
+            "url": "https://www.cnge.fr",
+            "description": "Collège National des Généralistes Enseignants",
+            "recherche": "https://www.cnge.fr/?s="
+        },
+        "Vidal": {
+            "url": "https://www.vidal.fr",
+            "description": "Base médicamenteuse française",
+            "recherche": "https://www.vidal.fr/recherche.html?q="
+        }
+    },
+    "Chirurgie Gynécologique": {
+        "CNGOF Chirurgie": {
+            "url": "http://www.cngof.fr",
+            "description": "Recommandations chirurgie gynéco",
+            "recherche": "http://www.cngof.fr/?s="
+        },
+        "AAGL": {
+            "url": "https://www.aagl.org",
+            "description": "Association for Gynecologic Laparoscopy",
+            "recherche": "https://www.aagl.org/search?q="
+        },
+        "SGO": {
+            "url": "https://www.sgo.org",
+            "description": "Society of Gynecologic Oncology",
+            "recherche": "https://www.sgo.org/search?q="
+        }
+    },
+    "Infertilité": {
+        "ESHRE": {
+            "url": "https://www.eshre.eu",
+            "description": "European Society of Human Reproduction",
+            "recherche": "https://www.eshre.eu/search?q="
+        },
+        "ASRM": {
+            "url": "https://www.asrm.org",
+            "description": "American Society for Reproductive Medicine",
+            "recherche": "https://www.asrm.org/search?q="
+        },
+        "CNGOF Fertilité": {
+            "url": "http://www.cngof.fr",
+            "description": "Recommandations françaises fertilité",
+            "recherche": "http://www.cngof.fr/?s="
+        }
+    },
+    "Échographie Gynécologique": {
+        "ISUOG": {
+            "url": "https://www.isuog.org",
+            "description": "International Society of Ultrasound in Obstetrics",
+            "recherche": "https://www.isuog.org/search.html?q="
+        },
+        "CFEF": {
+            "url": "http://www.cfef.org",
+            "description": "Collège Français d'Échographie Fœtale",
+            "recherche": "http://www.cfef.org/?s="
+        },
+        "AIUM": {
+            "url": "https://www.aium.org",
+            "description": "American Institute of Ultrasound in Medicine",
+            "recherche": "https://www.aium.org/search?q="
+        }
+    },
+    "Oncologie": {
+        "INCa": {
+            "url": "https://www.e-cancer.fr",
+            "description": "Institut National du Cancer",
+            "recherche": "https://www.e-cancer.fr/Recherche?SearchText="
+        },
+        "NCCN": {
+            "url": "https://www.nccn.org",
+            "description": "National Comprehensive Cancer Network",
+            "recherche": "https://www.nccn.org/search?q="
+        },
+        "ESMO": {
+            "url": "https://www.esmo.org",
+            "description": "European Society for Medical Oncology",
+            "recherche": "https://www.esmo.org/search?q="
+        }
+    },
+    "Pédiatrie": {
+        "SFP": {
+            "url": "https://www.sfpediatrie.com",
+            "description": "Société Française de Pédiatrie",
+            "recherche": "https://www.sfpediatrie.com/?s="
+        },
+        "AAP": {
+            "url": "https://www.aap.org",
+            "description": "American Academy of Pediatrics",
+            "recherche": "https://www.aap.org/search?q="
+        },
+        "WHO Child Health": {
+            "url": "https://www.who.int/health-topics/child-health",
+            "description": "OMS - Santé de l'enfant",
+            "recherche": "https://www.who.int/search?query="
+        }
+    }
 }
 
-# Initialiser session_state COMPLET
+# Initialiser session_state
 if 'historique' not in st.session_state:
     st.session_state.historique = []
-
 if 'derniere_recherche' not in st.session_state:
     st.session_state.derniere_recherche = None
-
 if 'articles_courants' not in st.session_state:
     st.session_state.articles_courants = []
-
 if 'synthese_courante' not in st.session_state:
     st.session_state.synthese_courante = ""
-
 if 'pmids_courants' not in st.session_state:
     st.session_state.pmids_courants = []
-
 if 'info_recherche' not in st.session_state:
     st.session_state.info_recherche = {}
-
 if 'fichier_notebooklm' not in st.session_state:
     st.session_state.fichier_notebooklm = ""
-
 if 'pdf_complet' not in st.session_state:
     st.session_state.pdf_complet = None
-
-def parse_date_fr(date_str):
-    """Convertit dd/mm/yyyy en date"""
-    try:
-        return datetime.strptime(date_str, "%d/%m/%Y").date()
-    except:
-        return None
-
-def format_date_fr(date_obj):
-    """Convertit date en dd/mm/yyyy"""
-    return date_obj.strftime("%d/%m/%Y")
+if 'script_audio_fr' not in st.session_state:
+    st.session_state.script_audio_fr = ""
+if 'sources_complementaires_contenu' not in st.session_state:
+    st.session_state.sources_complementaires_contenu = []
+if 'synthese_enrichie' not in st.session_state:
+    st.session_state.synthese_enrichie = ""
 
 def get_pdf_link(pmid):
     """Récupère le lien PDF PMC"""
@@ -184,6 +338,12 @@ Traduction:"""
             return f"[Quota dépassé]\n\n{texte}"
         return f"[Erreur]\n\n{texte}"
 
+def rechercher_source_complementaire(url_recherche, mots_cles):
+    """Simule une recherche sur une source complémentaire"""
+    # Note: En production, ceci utiliserait web scraping ou API
+    # Pour l'instant, on simule le résultat
+    return f"Résultats simulés pour '{mots_cles}' sur {url_recherche}"
+
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
@@ -200,6 +360,51 @@ class PDF(FPDF):
         self.set_fill_color(200, 220, 255)
         self.cell(0, 10, title, 0, 1, 'L', 1)
         self.ln(3)
+
+def generer_pdf_enrichi(spec, periode, synthese_pubmed, sources_complementaires, synthese_enrichie):
+    """Génère PDF avec PubMed + Sources complémentaires"""
+    pdf = PDF()
+    pdf.add_page()
+    
+    pdf.set_font('Arial', 'B', 20)
+    pdf.ln(30)
+    pdf.cell(0, 15, 'VEILLE MEDICALE ENRICHIE', 0, 1, 'C')
+    pdf.ln(10)
+    
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, f'Specialite: {spec}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Periode: {periode}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Date: {datetime.now().strftime("%d/%m/%Y")}', 0, 1, 'C')
+    
+    # SYNTHÈSE ENRICHIE
+    pdf.add_page()
+    pdf.section_title('SYNTHESE ENRICHIE (PubMed + Sources)')
+    
+    try:
+        synthese_clean = synthese_enrichie.encode('latin-1', 'ignore').decode('latin-1')
+    except:
+        synthese_clean = synthese_enrichie.encode('ascii', 'ignore').decode('ascii')
+    
+    pdf.set_font('Arial', '', 10)
+    pdf.multi_cell(0, 5, synthese_clean)
+    
+    # SOURCES UTILISÉES
+    pdf.add_page()
+    pdf.section_title('SOURCES COMPLEMENTAIRES')
+    
+    for source in sources_complementaires:
+        pdf.set_font('Arial', 'B', 11)
+        pdf.cell(0, 8, f'{source["nom"]}', 0, 1)
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(0, 6, f'URL: {source["url"]}', 0, 1)
+        pdf.ln(3)
+    
+    pdf_output = io.BytesIO()
+    pdf_string = pdf.output(dest='S').encode('latin-1')
+    pdf_output.write(pdf_string)
+    pdf_output.seek(0)
+    
+    return pdf_output.getvalue()
 
 def generer_pdf_complet(spec, periode, nb_articles, pmids, synthese, articles_data):
     """Génère PDF complet"""
@@ -349,6 +554,30 @@ Resume:
     
     return contenu
 
+def generer_fichier_notebooklm_enrichi(synthese_enrichie, sources):
+    """Génère fichier NotebookLM avec sources complémentaires"""
+    contenu = f"""# VEILLE MEDICALE ENRICHIE - SYNTHESE POUR PODCAST
+Date: {datetime.now().strftime("%d/%m/%Y")}
+
+## SYNTHESE ENRICHIE (PubMed + Sources Complémentaires)
+
+{synthese_enrichie}
+
+## SOURCES COMPLEMENTAIRES UTILISEES
+
+"""
+    
+    for source in sources:
+        contenu += f"""
+### {source['nom']}
+URL: {source['url']}
+Type: {source['type']}
+
+---
+"""
+    
+    return contenu
+
 def sauvegarder_recherche(spec, periode, type_etude, langue, pmids, synthese, mots_cles=""):
     """Sauvegarde recherche"""
     recherche = {
@@ -370,7 +599,7 @@ def sauvegarder_recherche(spec, periode, type_etude, langue, pmids, synthese, mo
 st.title("🩺 Veille Médicale Professionnelle")
 st.markdown("*Analyse avancée des publications PubMed avec IA*")
 
-tab1, tab2, tab3 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources Directes", "🎙️ Guide Podcast"])
 
 with tab1:
     with st.sidebar:
@@ -421,29 +650,40 @@ with tab1:
             ["Titre et résumé", "Titre uniquement", "Résumé uniquement"]
         )
         
+        # Sélecteurs à rouleau pour les dates
         st.subheader("📅 Période")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            date_debut_input = st.text_input(
-                "Début (JJ/MM/AAAA)",
-                value="01/01/2024"
-            )
-            date_debut = parse_date_fr(date_debut_input)
-            if not date_debut:
-                st.error("Format invalide")
-                date_debut = date(2024, 1, 1)
+            st.write("**Date de début**")
+            jour_debut = st.selectbox("Jour", range(1, 32), index=0, key="jour_debut")
+            mois_debut = st.selectbox("Mois", range(1, 13), index=0, key="mois_debut", 
+                                     format_func=lambda x: calendar.month_name[x])
+            annee_debut = st.selectbox("Année", range(2000, 2027), index=24, key="annee_debut")
         
         with col2:
-            date_fin_input = st.text_input(
-                "Fin (JJ/MM/AAAA)",
-                value=format_date_fr(date.today())
-            )
-            date_fin = parse_date_fr(date_fin_input)
-            if not date_fin:
-                st.error("Format invalide")
-                date_fin = date.today()
+            st.write("**Date de fin**")
+            jour_fin = st.selectbox("Jour", range(1, 32), index=date.today().day-1, key="jour_fin")
+            mois_fin = st.selectbox("Mois", range(1, 13), index=date.today().month-1, key="mois_fin",
+                                   format_func=lambda x: calendar.month_name[x])
+            annee_fin = st.selectbox("Année", range(2000, 2027), index=26, key="annee_fin")
+        
+        # Créer les objets date
+        try:
+            date_debut = date(annee_debut, mois_debut, jour_debut)
+        except:
+            st.error("⚠️ Date de début invalide")
+            date_debut = date(2024, 1, 1)
+        
+        try:
+            date_fin = date(annee_fin, mois_fin, jour_fin)
+        except:
+            st.error("⚠️ Date de fin invalide")
+            date_fin = date.today()
+        
+        if date_debut > date_fin:
+            st.error("⚠️ La date de début doit être avant la date de fin")
         
         st.subheader("🔓 Accès")
         acces_libre = st.checkbox("📖 PDF gratuit uniquement", value=False)
@@ -521,7 +761,7 @@ with tab1:
             "sort": "relevance"
         }
         
-        periode_affichage = f"du {format_date_fr(date_debut)} au {format_date_fr(date_fin)}"
+        periode_affichage = f"du {date_debut.strftime('%d/%m/%Y')} au {date_fin.strftime('%d/%m/%Y')}"
         
         try:
             with st.spinner("🔎 Recherche..."):
@@ -560,7 +800,8 @@ with tab1:
                 'type_etude': type_etude,
                 'langue': langue,
                 'mots_cles': mots_cles_originaux,
-                'acces_libre': acces_libre
+                'acces_libre': acces_libre,
+                'specialite_originale': spec_fr
             }
             
             if articles_complets:
@@ -636,7 +877,124 @@ Synthèse française:
                     
                     st.markdown(synthese)
                     
-                    # GÉNÉRER et SAUVEGARDER les fichiers
+                    # OPTION: Enrichir avec sources complémentaires
+                    st.divider()
+                    st.subheader("🔗 Enrichir avec Sources Complémentaires")
+                    
+                    specialite_recherche = spec_fr if mode_recherche == "Par spécialité" else None
+                    
+                    if specialite_recherche and specialite_recherche in SOURCES_PAR_SPECIALITE:
+                        st.info(f"Sources disponibles pour {specialite_recherche}")
+                        
+                        sources_dispo = SOURCES_PAR_SPECIALITE[specialite_recherche]
+                        sources_selectionnees = st.multiselect(
+                            "Sélectionnez les sources à inclure:",
+                            list(sources_dispo.keys()),
+                            help="Les informations de ces sources seront ajoutées à votre synthèse"
+                        )
+                        
+                        if sources_selectionnees:
+                            if st.button("📚 Enrichir la synthèse", type="secondary"):
+                                with st.spinner("Enrichissement avec sources complémentaires..."):
+                                    # Préparer les sources
+                                    sources_info = []
+                                    for source_nom in sources_selectionnees:
+                                        source = sources_dispo[source_nom]
+                                        sources_info.append({
+                                            'nom': source_nom,
+                                            'url': source['url'],
+                                            'type': 'Recommandations officielles',
+                                            'description': source['description']
+                                        })
+                                    
+                                    st.session_state.sources_complementaires_contenu = sources_info
+                                    
+                                    # Générer synthèse enrichie
+                                    sources_text = "\n\n".join([
+                                        f"**{s['nom']}** ({s['url']}): {s['description']}"
+                                        for s in sources_info
+                                    ])
+                                    
+                                    prompt_enrichi = f"""Tu es un expert médical. Enrichis cette synthèse PubMed avec les sources complémentaires.
+
+**SYNTHESE PUBMED:**
+{synthese}
+
+**SOURCES COMPLEMENTAIRES A INTEGRER:**
+{sources_text}
+
+CONSIGNES:
+1. Crée une synthèse ENRICHIE qui combine intelligemment:
+   - Les données PubMed (recherche scientifique)
+   - Les recommandations officielles des sources complémentaires
+2. Structure:
+   ## Vue d'ensemble enrichie
+   ## Recherche récente (PubMed)
+   ## Recommandations officielles (Sources complémentaires)
+   ## Convergences et divergences
+   ## Implications pratiques
+3. Cite clairement les sources (PubMed vs Recommandations)
+4. Mets en avant les points de consensus
+5. Signale les divergences s'il y en a
+
+SYNTHESE ENRICHIE:"""
+                                    
+                                    response_enrichi = model.generate_content(prompt_enrichi)
+                                    st.session_state.synthese_enrichie = response_enrichi.text
+                                    
+                                    st.success("✅ Synthèse enrichie générée!")
+                                    st.markdown("### 📊 Synthèse Enrichie")
+                                    st.markdown(st.session_state.synthese_enrichie)
+                                    
+                                    # Générer fichiers enrichis
+                                    fichier_nlm_enrichi = generer_fichier_notebooklm_enrichi(
+                                        st.session_state.synthese_enrichie,
+                                        sources_info
+                                    )
+                                    
+                                    pdf_enrichi = generer_pdf_enrichi(
+                                        display_term,
+                                        periode_affichage,
+                                        synthese,
+                                        sources_info,
+                                        st.session_state.synthese_enrichie
+                                    )
+                                    
+                                    st.divider()
+                                    st.markdown("### 📥 Téléchargements Enrichis")
+                                    
+                                    col_e1, col_e2, col_e3 = st.columns(3)
+                                    
+                                    with col_e1:
+                                        st.download_button(
+                                            label="📥 TXT Enrichi",
+                                            data=st.session_state.synthese_enrichie,
+                                            file_name="synthese_enrichie.txt",
+                                            mime="text/plain",
+                                            key="dl_txt_enrichi"
+                                        )
+                                    
+                                    with col_e2:
+                                        st.download_button(
+                                            label="📄 PDF Enrichi",
+                                            data=pdf_enrichi,
+                                            file_name="veille_enrichie.pdf",
+                                            mime="application/pdf",
+                                            key="dl_pdf_enrichi"
+                                        )
+                                    
+                                    with col_e3:
+                                        st.download_button(
+                                            label="🎙️ NotebookLM Enrichi",
+                                            data=fichier_nlm_enrichi,
+                                            file_name="notebooklm_enrichi.txt",
+                                            mime="text/plain",
+                                            key="dl_nlm_enrichi"
+                                        )
+                    else:
+                        st.warning("Aucune source complémentaire pour cette recherche")
+                    
+                    # GÉNÉRER et SAUVEGARDER les fichiers standard
                     st.session_state.fichier_notebooklm = generer_fichier_notebooklm(synthese, articles_complets)
                     st.session_state.pdf_complet = generer_pdf_complet(
                         display_term,
@@ -647,14 +1005,16 @@ Synthèse française:
                         articles_complets
                     )
                     
+                    # Section Podcast
                     st.divider()
-                    st.subheader("🎙️ Créer un Podcast")
+                    st.subheader("🎙️ Générer un Podcast")
                     
-                    st.info("Générez un podcast audio avec NotebookLM : Téléchargez le fichier, importez-le sur notebooklm.google.com, puis cliquez sur Generate Audio Overview")
+                    col_podcast1, col_podcast2 = st.columns(2)
                     
-                    col_nlm1, col_nlm2 = st.columns(2)
-                    
-                    with col_nlm1:
+                    with col_podcast1:
+                        st.markdown("### 🇬🇧 NotebookLM (Anglais)")
+                        st.info("Podcast conversationnel automatique")
+                        
                         st.download_button(
                             label="📥 Fichier NotebookLM",
                             data=st.session_state.fichier_notebooklm,
@@ -662,12 +1022,71 @@ Synthèse française:
                             mime="text/plain",
                             key="download_notebooklm"
                         )
-                    
-                    with col_nlm2:
+                        
                         st.link_button(
                             label="🔗 Ouvrir NotebookLM",
                             url="https://notebooklm.google.com"
                         )
+                    
+                    with col_podcast2:
+                        st.markdown("### 🇫🇷 Script Français")
+                        st.info("Script optimisé pour audio français")
+                        
+                        if st.button("📝 Générer Script Français", type="secondary"):
+                            with st.spinner("Création script..."):
+                                try:
+                                    prompt_audio = f"""Producteur podcast médical français.
+
+Synthèse:
+{synthese}
+
+Crée un SCRIPT AUDIO 10 minutes.
+
+Format:
+
+[GÉNÉRIQUE]
+
+DR. MARIE: [texte]
+
+DR. THOMAS: [texte]
+
+Style naturel, ~1500 mots.
+
+SCRIPT:"""
+                                    
+                                    response_script = model.generate_content(prompt_audio)
+                                    st.session_state.script_audio_fr = response_script.text
+                                    
+                                except Exception as e:
+                                    st.error(f"❌ {str(e)}")
+                    
+                    if st.session_state.script_audio_fr:
+                        st.divider()
+                        st.markdown("### 📜 Script Audio")
+                        
+                        st.text_area(
+                            "Script:",
+                            st.session_state.script_audio_fr,
+                            height=300,
+                            key="display_script"
+                        )
+                        
+                        col_s1, col_s2 = st.columns(2)
+                        
+                        with col_s1:
+                            st.download_button(
+                                label="📥 Script",
+                                data=st.session_state.script_audio_fr,
+                                file_name=f"script_{datetime.now().strftime('%Y%m%d')}.txt",
+                                mime="text/plain",
+                                key="download_script"
+                            )
+                        
+                        with col_s2:
+                            st.link_button(
+                                label="🎤 ElevenLabs",
+                                url="https://elevenlabs.io"
+                            )
                     
                     sauvegarder_recherche(
                         spec_fr if mode_recherche == "Par spécialité" else "Personnalisé",
@@ -682,13 +1101,14 @@ Synthèse française:
                     st.success("✅ Sauvegardé")
                     
                     st.divider()
+                    st.markdown("### 📥 Téléchargements Standards")
                     col1, col2 = st.columns(2)
                     
                     nom = spec_fr if mode_recherche == "Par spécialité" else "recherche"
                     
                     with col1:
                         st.download_button(
-                            label="📥 Synthèse TXT",
+                            label="📥 TXT",
                             data=synthese,
                             file_name=f"synthese_{nom}.txt",
                             mime="text/plain",
@@ -697,7 +1117,7 @@ Synthèse française:
                     
                     with col2:
                         st.download_button(
-                            label="📄 PDF Complet",
+                            label="📄 PDF",
                             data=st.session_state.pdf_complet,
                             file_name=f"veille_{nom}.pdf",
                             mime="application/pdf",
@@ -709,58 +1129,6 @@ Synthèse française:
         
         except Exception as e:
             st.error(f"❌ {str(e)}")
-    
-    # AFFICHER les résultats sauvegardés si disponibles
-    elif st.session_state.derniere_recherche is not None:
-        st.info("💡 Dernière recherche disponible ci-dessous")
-        
-        if st.session_state.articles_courants:
-            st.subheader("📚 Articles")
-            for i, article in enumerate(st.session_state.articles_courants, 1):
-                with st.expander(f"Article {i} - {article['title'][:80]}..."):
-                    st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
-                    st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
-                    st.markdown("**📖 Résumé:**")
-                    st.write(article['abstract_fr'])
-        
-        if st.session_state.synthese_courante:
-            st.divider()
-            st.subheader("🤖 Synthèse IA")
-            st.markdown(st.session_state.synthese_courante)
-            
-            st.divider()
-            st.subheader("📥 Téléchargements")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.session_state.fichier_notebooklm:
-                    st.download_button(
-                        label="📥 NotebookLM",
-                        data=st.session_state.fichier_notebooklm,
-                        file_name=f"notebooklm_{datetime.now().strftime('%Y%m%d')}.txt",
-                        mime="text/plain",
-                        key="dl_nlm_saved"
-                    )
-            
-            with col2:
-                st.download_button(
-                    label="📥 TXT",
-                    data=st.session_state.synthese_courante,
-                    file_name="synthese.txt",
-                    mime="text/plain",
-                    key="dl_txt_saved"
-                )
-            
-            with col3:
-                if st.session_state.pdf_complet:
-                    st.download_button(
-                        label="📄 PDF",
-                        data=st.session_state.pdf_complet,
-                        file_name="veille.pdf",
-                        mime="application/pdf",
-                        key="dl_pdf_saved"
-                    )
 
 with tab2:
     st.header("📚 Historique")
@@ -782,12 +1150,89 @@ with tab2:
                 st.markdown(rech['synthese'])
 
 with tab3:
-    st.header("🔗 Sources Complémentaires")
+    st.header("🔗 Recherche Directe sur Sources Complémentaires")
     
-    for nom, url in SOURCES_SUPPLEMENTAIRES.items():
-        st.markdown(f"**{nom}**")
-        st.markdown(f"[Accéder]({url})")
-        st.divider()
+    st.info("Recherchez directement sur les sites de référence sans passer par PubMed")
+    
+    # Sélection spécialité
+    specialite_source = st.selectbox(
+        "Choisissez une spécialité:",
+        list(SOURCES_PAR_SPECIALITE.keys()),
+        key="spec_source_directe"
+    )
+    
+    if specialite_source:
+        sources_spec = SOURCES_PAR_SPECIALITE[specialite_source]
+        
+        st.markdown(f"### Sources disponibles pour {specialite_source}")
+        
+        for nom_source, info_source in sources_spec.items():
+            with st.expander(f"📚 {nom_source}"):
+                st.markdown(f"**Description:** {info_source['description']}")
+                st.markdown(f"**URL:** {info_source['url']}")
+                
+                # Formulaire de recherche
+                mots_cles_source = st.text_input(
+                    f"Rechercher dans {nom_source}:",
+                    key=f"search_{nom_source}",
+                    placeholder="Ex: hypertension grossesse"
+                )
+                
+                col_btn1, col_btn2 = st.columns(2)
+                
+                with col_btn1:
+                    if mots_cles_source:
+                        url_recherche = f"{info_source['recherche']}{mots_cles_source}"
+                        st.link_button(
+                            f"🔍 Rechercher sur {nom_source}",
+                            url_recherche
+                        )
+                
+                with col_btn2:
+                    st.link_button(
+                        f"🏠 Accueil {nom_source}",
+                        info_source['url']
+                    )
+
+with tab4:
+    st.header("🎙️ Guide Complet : Créer vos Podcasts")
+    
+    st.markdown("""
+## 🇬🇧 Option 1 : NotebookLM (Anglais - Gratuit)
+
+### Étapes :
+1. Télécharger le fichier NotebookLM
+2. Ouvrir notebooklm.google.com
+3. Créer un nouveau notebook
+4. Importer votre fichier
+5. Cliquer sur "Audio Overview"
+6. Télécharger le MP3
+
+✅ Gratuit et illimité
+✅ Qualité exceptionnelle
+
+---
+
+## 🇫🇷 Option 2 : ElevenLabs (Français)
+
+### Plans:
+- **Gratuit**: 10 000 caractères/mois (~7 min)
+- **Starter (5$/mois)**: 30 000 caractères (~3-4 podcasts)
+- **Creator (22$/mois)**: 100 000 caractères (~10 podcasts)
+
+### Étapes:
+1. Générer script français dans l'app
+2. Créer compte sur elevenlabs.io
+3. Coller le script
+4. Choisir voix française
+5. Générer et télécharger
+
+---
+
+## 💡 Recommandation
+
+**Usage régulier:** NotebookLM (anglais) + ElevenLabs Starter (5$/mois) pour synthèses importantes en français
+    """)
 
 st.markdown("---")
 st.caption("💊 Veille médicale | PubMed + Gemini 2.5")
