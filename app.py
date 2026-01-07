@@ -364,12 +364,39 @@ def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callbac
         return None, f"Erreur: {str(e)}"
 
 def traduire_mots_cles(mots):
+    """Traduit les mots-clés français en termes médicaux anglais"""
     try:
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        response = model.generate_content(f"Traduis en anglais médical pour PubMed: {mots}")
-        return response.text.strip()
-    except:
+        
+        prompt = f"""Traduis ces termes médicaux français en anglais médical standard pour PubMed.
+
+RÈGLES:
+- Utilise la terminologie MeSH (Medical Subject Headings)
+- Donne UNIQUEMENT les termes anglais, sans explication
+- Pas de guillemets, pas de ponctuation superflue
+- Variantes orthographiques acceptées
+
+Exemples:
+dysménorrhée → dysmenorrhea
+hypertension gravidique → gestational hypertension
+pré-éclampsie → preeclampsia
+
+Termes à traduire: {mots}
+
+Traduction:"""
+        
+        response = model.generate_content(prompt)
+        traduction = response.text.strip()
+        
+        # Nettoyer
+        traduction = traduction.replace('"', '').replace("'", "")
+        traduction = traduction.replace("→", "").replace(":", "")
+        traduction = traduction.strip()
+        
+        return traduction
+    except Exception as e:
+        # Fallback : retourner tel quel
         return mots
 
 def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemini"):
@@ -585,7 +612,11 @@ with tab1:
                 
                 with st.spinner("🌐 Traduction des mots-clés..."):
                     term = traduire_mots_cles(mots_cles_custom)
-                    st.info(f"🔄 Recherche PubMed : `{term}`")
+                
+                # AFFICHER la traduction
+                with st.expander("🔍 Aperçu traduction"):
+                    st.markdown(f"**Français:** {mots_cles_custom}")
+                    st.markdown(f"**Anglais (PubMed):** `{term}`")
                 
                 display_term = f"Mots-clés: {mots_cles_custom}"
                 
@@ -607,26 +638,24 @@ with tab1:
                 if journaux:
                     journaux_q = " OR ".join([f'"{j}"[Journal]' for j in journaux])
                     query_parts.append(f"({journaux_q})")
-                    st.info(f"📰 Recherche limitée aux {len(journaux)} journaux de référence")
             elif journal_selectionne != "TOUS":
                 query_parts.append(f'"{journal_selectionne}"[Journal]')
-                st.info(f"📰 Recherche limitée au journal: {journal_selectionne}")
-            else:
-                st.info("🌐 Recherche dans TOUS les journaux PubMed")
             
             if TYPES_ETUDE[type_etude]:
                 query_parts.append(f"{TYPES_ETUDE[type_etude]}[ptyp]")
             
             query = " AND ".join(query_parts)
             
-            with st.expander("🔍 Détails de la requête PubMed"):
-                st.code(query)
+            # AFFICHER la requête complète
+            with st.expander("🔍 Requête PubMed complète"):
+                st.code(query, language="text")
+                st.caption("Cette requête est envoyée à PubMed pour rechercher les articles")
             
             base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": nb_max, "sort": "date"}
             
             try:
-                with st.spinner("Recherche..."):
+                with st.spinner("🔎 Recherche en cours sur PubMed..."):
                     response = requests.get(base_url, params=params, timeout=15)
                 
                 if response.status_code != 200:
@@ -638,13 +667,33 @@ with tab1:
                 count = data.get("esearchresult", {}).get("count", "0")
                 
                 if not ids:
-                    st.warning(f"⚠️ Aucun article trouvé pour : `{term}`")
+                    st.warning(f"⚠️ Aucun article trouvé")
+                    
                     st.info("""
-**Suggestions:**
-- Élargissez la période
-- Retirez les filtres (journaux, type d'étude)
-- Essayez des mots-clés plus généraux
+**Suggestions pour améliorer les résultats:**
+
+1. **Élargir la période** (ex: 2020-2025)
+2. **Retirer les filtres restrictifs:**
+   - Désactiver "PDF complets uniquement"
+   - Mettre "Tous les journaux"
+   - Retirer le filtre type d'étude
+3. **Modifier les mots-clés:**
+   - Essayer des synonymes
+   - Utiliser des termes plus généraux
+   - Retirer les accents
+
+**Exemple:** Au lieu de "dysménorrhée", essayez "douleur menstruelle"
                     """)
+                    
+                    with st.expander("🔍 Vérifier la traduction"):
+                        st.markdown(f"**Votre recherche:** {mots_cles_custom if mode_recherche == 'Par mots-clés' else spec_fr}")
+                        st.markdown(f"**Terme utilisé sur PubMed:** `{term}`")
+                        st.markdown(f"**Requête complète:** `{query}`")
+                        st.markdown("""
+**Conseil:** Vérifiez que le terme anglais est correct. 
+Par exemple, "dysmenorrhea" devrait donner des résultats.
+                        """)
+                    
                     st.stop()
                 
                 st.success(f"✅ {count} articles trouvés - Affichage de {len(ids)}")
