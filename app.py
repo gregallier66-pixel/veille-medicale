@@ -16,17 +16,18 @@ except:
     st.error("⚠️ Clé GEMINI_KEY manquante dans les secrets")
     st.stop()
 
-# Spécialités étendues
+# Spécialités RÉORGANISÉES
 TRAD = {
     "Gynécologie": "Gynecology",
+    "Obstétrique": "Obstetrics",
+    "Anesthésie-Réanimation": "Anesthesiology",
     "Endocrinologie": "Endocrinology",
     "Médecine Générale": "General Medicine",
-    "Cardiologie": "Cardiology",
-    "Neurologie": "Neurology",
+    "Chirurgie Gynécologique": "Gynecologic Surgery",
+    "Infertilité": "Infertility",
+    "Échographie Gynécologique": "Gynecologic Ultrasound",
     "Oncologie": "Oncology",
-    "Pédiatrie": "Pediatrics",
-    "Anesthésie-Réanimation": "Anesthesiology",
-    "Obstétrique": "Obstetrics"
+    "Pédiatrie": "Pediatrics"
 }
 
 # Types d'études
@@ -39,17 +40,18 @@ TYPES_ETUDE = {
     "Études cas-témoins": "Case-Control Studies"
 }
 
-# Journaux par spécialité
+# Journaux par spécialité (MISE À JOUR)
 JOURNAUX_SPECIALITE = {
-    "Gynécologie": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Hum Reprod", "Fertil Steril"],
-    "Obstétrique": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Ultrasound Obstet Gynecol"],
+    "Gynécologie": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Hum Reprod", "Fertil Steril", "Gynecol Surg"],
+    "Obstétrique": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Ultrasound Obstet Gynecol", "J Matern Fetal Neonatal Med"],
+    "Anesthésie-Réanimation": ["Anesthesiology", "Br J Anaesth", "Anesth Analg", "Intensive Care Med", "Crit Care Med"],
     "Endocrinologie": ["J Clin Endocrinol Metab", "Diabetes Care", "Eur J Endocrinol", "Endocr Rev"],
-    "Cardiologie": ["Circulation", "JACC", "Eur Heart J", "J Am Coll Cardiol", "Heart"],
-    "Neurologie": ["Neurology", "Brain", "Lancet Neurol", "JAMA Neurol", "Ann Neurol"],
-    "Oncologie": ["J Clin Oncol", "Lancet Oncol", "Cancer", "JAMA Oncol", "Ann Oncol"],
-    "Pédiatrie": ["Pediatrics", "JAMA Pediatr", "Arch Dis Child", "J Pediatr"],
-    "Anesthésie-Réanimation": ["Anesthesiology", "Br J Anaesth", "Anesth Analg", "Intensive Care Med"],
-    "Médecine Générale": ["BMJ", "JAMA", "N Engl J Med", "Lancet", "Ann Intern Med"]
+    "Médecine Générale": ["BMJ", "JAMA", "N Engl J Med", "Lancet", "Ann Intern Med"],
+    "Chirurgie Gynécologique": ["Gynecol Surg", "J Minim Invasive Gynecol", "Eur J Obstet Gynecol Reprod Biol"],
+    "Infertilité": ["Fertil Steril", "Hum Reprod", "Reprod Biomed Online", "J Assist Reprod Genet"],
+    "Échographie Gynécologique": ["Ultrasound Obstet Gynecol", "J Ultrasound Med", "Ultrasound Q"],
+    "Oncologie": ["J Clin Oncol", "Lancet Oncol", "Cancer", "JAMA Oncol", "Ann Oncol", "Gynecol Oncol"],
+    "Pédiatrie": ["Pediatrics", "JAMA Pediatr", "Arch Dis Child", "J Pediatr"]
 }
 
 # Sources supplémentaires
@@ -61,9 +63,30 @@ SOURCES_SUPPLEMENTAIRES = {
     "UpToDate": "https://www.uptodate.com"
 }
 
-# Initialiser l'historique
+# Initialiser session_state COMPLET
 if 'historique' not in st.session_state:
     st.session_state.historique = []
+
+if 'derniere_recherche' not in st.session_state:
+    st.session_state.derniere_recherche = None
+
+if 'articles_courants' not in st.session_state:
+    st.session_state.articles_courants = []
+
+if 'synthese_courante' not in st.session_state:
+    st.session_state.synthese_courante = ""
+
+if 'pmids_courants' not in st.session_state:
+    st.session_state.pmids_courants = []
+
+if 'info_recherche' not in st.session_state:
+    st.session_state.info_recherche = {}
+
+if 'fichier_notebooklm' not in st.session_state:
+    st.session_state.fichier_notebooklm = ""
+
+if 'pdf_complet' not in st.session_state:
+    st.session_state.pdf_complet = None
 
 def parse_date_fr(date_str):
     """Convertit dd/mm/yyyy en date"""
@@ -527,6 +550,19 @@ with tab1:
             with st.spinner("📄 Récupération..."):
                 articles_complets = recuperer_abstracts(ids, traduire=traduire_abstracts, api_key=G_KEY)
             
+            # SAUVEGARDER dans session_state
+            st.session_state.articles_courants = articles_complets
+            st.session_state.pmids_courants = ids
+            st.session_state.info_recherche = {
+                'display_term': display_term,
+                'periode': periode_affichage,
+                'spec': spec_fr if mode_recherche == "Par spécialité" else "Personnalisé",
+                'type_etude': type_etude,
+                'langue': langue,
+                'mots_cles': mots_cles_originaux,
+                'acces_libre': acces_libre
+            }
+            
             if articles_complets:
                 st.subheader("📚 Articles")
                 
@@ -595,23 +631,36 @@ Synthèse française:
                     response_ia = model.generate_content(prompt)
                     synthese = response_ia.text
                     
+                    # SAUVEGARDER la synthèse
+                    st.session_state.synthese_courante = synthese
+                    
                     st.markdown(synthese)
+                    
+                    # GÉNÉRER et SAUVEGARDER les fichiers
+                    st.session_state.fichier_notebooklm = generer_fichier_notebooklm(synthese, articles_complets)
+                    st.session_state.pdf_complet = generer_pdf_complet(
+                        display_term,
+                        periode_affichage,
+                        len(ids),
+                        ids,
+                        synthese,
+                        articles_complets
+                    )
                     
                     st.divider()
                     st.subheader("🎙️ Créer un Podcast")
                     
                     st.info("Générez un podcast audio avec NotebookLM : Téléchargez le fichier, importez-le sur notebooklm.google.com, puis cliquez sur Generate Audio Overview")
                     
-                    fichier_notebooklm = generer_fichier_notebooklm(synthese, articles_complets)
-                    
                     col_nlm1, col_nlm2 = st.columns(2)
                     
                     with col_nlm1:
                         st.download_button(
                             label="📥 Fichier NotebookLM",
-                            data=fichier_notebooklm,
+                            data=st.session_state.fichier_notebooklm,
                             file_name=f"notebooklm_{datetime.now().strftime('%Y%m%d')}.txt",
-                            mime="text/plain"
+                            mime="text/plain",
+                            key="download_notebooklm"
                         )
                     
                     with col_nlm2:
@@ -639,27 +688,20 @@ Synthèse française:
                     
                     with col1:
                         st.download_button(
-                            label="📥 TXT",
+                            label="📥 Synthèse TXT",
                             data=synthese,
                             file_name=f"synthese_{nom}.txt",
-                            mime="text/plain"
+                            mime="text/plain",
+                            key="download_txt"
                         )
                     
                     with col2:
-                        with st.spinner("📄 PDF..."):
-                            pdf_bytes = generer_pdf_complet(
-                                display_term,
-                                periode_affichage,
-                                len(ids),
-                                ids,
-                                synthese,
-                                articles_complets
-                            )
                         st.download_button(
                             label="📄 PDF Complet",
-                            data=pdf_bytes,
+                            data=st.session_state.pdf_complet,
                             file_name=f"veille_{nom}.pdf",
-                            mime="application/pdf"
+                            mime="application/pdf",
+                            key="download_pdf"
                         )
                     
                 except Exception as e:
@@ -667,6 +709,58 @@ Synthèse française:
         
         except Exception as e:
             st.error(f"❌ {str(e)}")
+    
+    # AFFICHER les résultats sauvegardés si disponibles
+    elif st.session_state.derniere_recherche is not None:
+        st.info("💡 Dernière recherche disponible ci-dessous")
+        
+        if st.session_state.articles_courants:
+            st.subheader("📚 Articles")
+            for i, article in enumerate(st.session_state.articles_courants, 1):
+                with st.expander(f"Article {i} - {article['title'][:80]}..."):
+                    st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
+                    st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
+                    st.markdown("**📖 Résumé:**")
+                    st.write(article['abstract_fr'])
+        
+        if st.session_state.synthese_courante:
+            st.divider()
+            st.subheader("🤖 Synthèse IA")
+            st.markdown(st.session_state.synthese_courante)
+            
+            st.divider()
+            st.subheader("📥 Téléchargements")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.session_state.fichier_notebooklm:
+                    st.download_button(
+                        label="📥 NotebookLM",
+                        data=st.session_state.fichier_notebooklm,
+                        file_name=f"notebooklm_{datetime.now().strftime('%Y%m%d')}.txt",
+                        mime="text/plain",
+                        key="dl_nlm_saved"
+                    )
+            
+            with col2:
+                st.download_button(
+                    label="📥 TXT",
+                    data=st.session_state.synthese_courante,
+                    file_name="synthese.txt",
+                    mime="text/plain",
+                    key="dl_txt_saved"
+                )
+            
+            with col3:
+                if st.session_state.pdf_complet:
+                    st.download_button(
+                        label="📄 PDF",
+                        data=st.session_state.pdf_complet,
+                        file_name="veille.pdf",
+                        mime="application/pdf",
+                        key="dl_pdf_saved"
+                    )
 
 with tab2:
     st.header("📚 Historique")
