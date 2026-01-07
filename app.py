@@ -57,16 +57,13 @@ JOURNAUX_SPECIALITE = {
     "Pédiatrie": ["Pediatrics", "JAMA Pediatr", "Arch Dis Child"]
 }
 
-# SOURCES COMPLÉMENTAIRES
 SOURCES_PAR_SPECIALITE = {
     "Gynécologie": {
-        "CNGOF": {"url": "http://www.cngof.fr", "description": "Recommandations françaises", "recherche": "http://www.cngof.fr/?s="},
-        "ACOG": {"url": "https://www.acog.org", "description": "ACOG", "recherche": "https://www.acog.org/search?q="},
-        "HAS": {"url": "https://www.has-sante.fr", "description": "HAS", "recherche": "https://www.has-sante.fr/jcms/recherche?text="}
+        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF", "recherche": "http://www.cngof.fr/?s="},
+        "ACOG": {"url": "https://www.acog.org", "description": "ACOG", "recherche": "https://www.acog.org/search?q="}
     },
     "Obstétrique": {
-        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF", "recherche": "http://www.cngof.fr/?s="},
-        "RCOG": {"url": "https://www.rcog.org.uk", "description": "RCOG", "recherche": "https://www.rcog.org.uk/search?q="}
+        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF", "recherche": "http://www.cngof.fr/?s="}
     },
     "Anesthésie-Réanimation": {
         "SFAR": {"url": "https://sfar.org", "description": "SFAR", "recherche": "https://sfar.org/?s="}
@@ -105,6 +102,8 @@ if 'info_recherche' not in st.session_state:
     st.session_state.info_recherche = {}
 if 'analyses_individuelles' not in st.session_state:
     st.session_state.analyses_individuelles = {}
+if 'fichiers_finaux' not in st.session_state:
+    st.session_state.fichiers_finaux = {}
 
 def traduire_avec_deepl(texte, api_key):
     """Traduit avec DeepL"""
@@ -119,26 +118,17 @@ def traduire_avec_deepl(texte, api_key):
         return None
 
 def nettoyer_titre(titre):
-    """Nettoie le titre de TOUS les artefacts"""
+    """Nettoie le titre"""
     if not titre:
         return "Titre non disponible"
-    
-    # Supprimer les balises HTML/XML
     titre = re.sub(r'<[^>]+>', '', titre)
-    
-    # Supprimer "See more" et variantes (insensible à la casse)
     titre = re.sub(r'\s*see\s+more\s*', '', titre, flags=re.IGNORECASE)
     titre = re.sub(r'\s*\[see\s+more\]\s*', '', titre, flags=re.IGNORECASE)
-    titre = re.sub(r'\s*\(see\s+more\)\s*', '', titre, flags=re.IGNORECASE)
-    titre = re.sub(r'\s*voir\s+plus\s*', '', titre, flags=re.IGNORECASE)
-    
-    # Supprimer espaces multiples
     titre = re.sub(r'\s+', ' ', titre)
-    
     return titre.strip()
 
 def traduire_texte(texte, mode="gemini"):
-    """Traduit - UNE SEULE traduction - CORRECTION GEMINI"""
+    """Traduit"""
     if not texte or len(texte.strip()) < 3:
         return texte
     
@@ -147,55 +137,29 @@ def traduire_texte(texte, mode="gemini"):
         if trad:
             return nettoyer_titre(trad)
     
-    # CORRECTION : Utiliser gemini-2.0-flash-exp (pas "Gémaux")
     try:
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
-        prompt = f"""Traduis ce texte médical en français professionnel.
+        prompt = f"""Traduis en français professionnel.
+Une seule traduction, sans numérotation.
 
-RÈGLES STRICTES:
-- Donne UNE SEULE traduction
-- Pas de numérotation (1., 2., etc.)
-- Pas d'options multiples
-- Pas de "Traduction:" dans la réponse
-- Juste la traduction directe
-
-Texte à traduire:
 {texte}"""
         
         response = model.generate_content(prompt)
         traduction = response.text.strip()
-        
-        # Nettoyer la réponse
-        traduction = traduction.replace("**", "")
-        traduction = traduction.replace("Traduction:", "")
-        traduction = traduction.replace("Traduction :", "")
-        
-        # Supprimer numérotation au début
+        traduction = traduction.replace("**", "").replace("Traduction:", "")
         traduction = re.sub(r'^\d+[\.\)]\s*', '', traduction)
-        
-        # Nettoyer les artefacts
         traduction = nettoyer_titre(traduction)
-        
         return traduction
-    except Exception as e:
-        st.warning(f"Erreur traduction: {str(e)}")
+    except:
         return texte
 
 def get_pdf_link_v2(pmid):
-    """VERSION AMÉLIORÉE - Récupère le lien PDF avec plusieurs méthodes"""
+    """Récupère lien PDF"""
     try:
-        # MÉTHODE 1 : Via elink vers PMC
         base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
-        params = {
-            "dbfrom": "pubmed",
-            "db": "pmc",
-            "id": pmid,
-            "retmode": "xml",
-            "linkname": "pubmed_pmc"
-        }
-        
+        params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "xml", "linkname": "pubmed_pmc"}
         response = requests.get(base_url, params=params, timeout=10)
         
         if response.status_code == 200:
@@ -204,58 +168,46 @@ def get_pdf_link_v2(pmid):
             
             if pmc_id is not None:
                 pmc_id_text = pmc_id.text
-                
-                # Essayer plusieurs URLs possibles
                 urls_possibles = [
                     f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id_text}/pdf/",
                     f"https://europepmc.org/articles/PMC{pmc_id_text}?pdf=render",
                     f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id_text}/pdf/{pmc_id_text}.pdf"
                 ]
-                
                 return urls_possibles, pmc_id_text
-        
         return None, None
-    except Exception as e:
+    except:
         return None, None
 
 def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callback=None):
-    """Télécharge et extrait PDF - VERSION CORRIGÉE avec meilleure gestion 403"""
+    """Télécharge et extrait PDF"""
     try:
         urls_possibles, pmc_id = get_pdf_link_v2(pmid)
-        
         if not urls_possibles:
-            return None, "PDF non disponible en libre accès sur PubMed Central"
+            return None, "PDF non disponible"
         
         if progress_callback:
-            progress_callback(f"📥 Recherche PDF pour PMID {pmid}...")
+            progress_callback(f"📥 Recherche PDF {pmid}...")
         
-        # Essayer chaque URL
         pdf_content = None
-        url_utilisee = None
-        
-        # Headers pour contourner certains blocages
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/pdf,text/html',
-            'Accept-Language': 'en-US,en;q=0.9',
         }
         
         for url in urls_possibles:
             try:
                 response = requests.get(url, timeout=30, allow_redirects=True, headers=headers)
-                
                 if response.status_code == 200 and 'application/pdf' in response.headers.get('Content-Type', ''):
                     pdf_content = response.content
-                    url_utilisee = url
                     break
             except:
                 continue
         
         if not pdf_content:
-            return None, f"PDF non accessible (PMC{pmc_id}). Cet article nécessite probablement un abonnement institutionnel."
+            return None, f"PDF non accessible (PMC{pmc_id})"
         
         if progress_callback:
-            progress_callback(f"📄 Extraction du texte...")
+            progress_callback(f"📄 Extraction...")
         
         try:
             pdf_file = BytesIO(pdf_content)
@@ -267,37 +219,29 @@ def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callbac
             
             for i in range(max_pages):
                 try:
-                    texte_page = pdf_reader.pages[i].extract_text()
-                    texte_complet += texte_page + "\n\n"
+                    texte_complet += pdf_reader.pages[i].extract_text() + "\n\n"
                 except:
                     continue
             
             if len(texte_complet) < 100:
-                return None, "Contenu PDF insuffisant (impossible à extraire)"
+                return None, "Contenu insuffisant"
             
             if len(texte_complet) > 12000:
-                texte_complet = texte_complet[:12000] + "\n\n[PDF tronqué pour analyse]"
+                texte_complet = texte_complet[:12000] + "\n\n[Tronqué]"
             
             if progress_callback:
-                progress_callback(f"🌐 Traduction en cours...")
+                progress_callback(f"🌐 Traduction...")
             
-            # Traduire par chunks
             chunk_size = 4000
             texte_traduit = ""
             
             for i in range(0, len(texte_complet), chunk_size):
                 chunk = texte_complet[i:i+chunk_size]
-                trad_chunk = traduire_texte(chunk, mode=mode_traduction)
-                texte_traduit += trad_chunk + "\n\n"
-                
-                if progress_callback and i > 0:
-                    progress_callback(f"🌐 Traduction... {min(100, int((i/len(texte_complet))*100))}%")
+                texte_traduit += traduire_texte(chunk, mode=mode_traduction) + "\n\n"
             
             return texte_traduit, None
-            
         except Exception as e:
-            return None, f"Erreur lors de l'extraction du PDF: {str(e)}"
-            
+            return None, f"Erreur extraction: {str(e)}"
     except Exception as e:
         return None, f"Erreur: {str(e)}"
 
@@ -307,12 +251,12 @@ def traduire_mots_cles(mots_cles_fr):
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
-        prompt = f"""Traduis ces mots-clés médicaux en anglais pour une recherche PubMed.
-Donne UNIQUEMENT les termes anglais, sans explication.
+        prompt = f"""Traduis en anglais médical pour PubMed.
+Uniquement les termes anglais.
 
-Mots-clés français: {mots_cles_fr}
+{mots_cles_fr}
 
-Termes anglais:"""
+Anglais:"""
         
         response = model.generate_content(prompt)
         return response.text.strip()
@@ -320,7 +264,7 @@ Termes anglais:"""
         return mots_cles_fr
 
 def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemini"):
-    """Récupère titres - CORRECTION: Traduire TOUS les titres"""
+    """Récupère titres"""
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml", "rettype": "abstract"}
     
@@ -333,18 +277,14 @@ def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemi
             for article in root.findall('.//PubmedArticle'):
                 pmid = article.find('.//PMID').text if article.find('.//PMID') is not None else "N/A"
                 
-                # Extraire le titre avec toutes les parties (texte et sous-éléments)
                 title_elem = article.find('.//ArticleTitle')
                 if title_elem is not None:
-                    # Récupérer TOUT le texte, y compris dans les sous-éléments
                     title = ''.join(title_elem.itertext())
                 else:
                     title = "Titre non disponible"
                 
-                # Nettoyer AVANT traduction
                 title = nettoyer_titre(title)
                 
-                # CORRECTION: Traduire TOUS les titres si demandé
                 if traduire_titres and title != "Titre non disponible":
                     title_fr = traduire_texte(title, mode=mode_traduction)
                     title_fr = nettoyer_titre(title_fr)
@@ -483,53 +423,39 @@ else:
 tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources", "⚙️ DeepL"])
 
 with tab1:
+    # ÉTAPE 1
     if st.session_state.mode_etape == 1:
         st.header("📋 Étape 1 : Prévisualisation")
         
         with st.sidebar:
             st.header("⚙️ Paramètres")
             
-            mode_recherche = st.radio("Mode de recherche", ["Par spécialité", "Par mots-clés"])
+            mode_recherche = st.radio("Mode", ["Par spécialité", "Par mots-clés"])
             
             if mode_recherche == "Par spécialité":
                 spec_fr = st.selectbox("🏥 Spécialité", list(TRAD.keys()))
                 mots_cles_custom = ""
                 
                 st.subheader("📰 Journaux")
-                choix_journaux = st.radio(
-                    "Limiter à:",
-                    ["Tous les journaux PubMed", 
-                     "Journaux de la spécialité",
-                     "Un journal spécifique"]
-                )
+                choix_journaux = st.radio("Limiter à:", ["Tous les journaux PubMed", "Journaux de la spécialité", "Un journal spécifique"])
                 
                 if choix_journaux == "Un journal spécifique":
-                    journaux_dispo = JOURNAUX_SPECIALITE.get(spec_fr, [])
-                    journal_selectionne = st.selectbox("Journal:", journaux_dispo)
+                    journal_selectionne = st.selectbox("Journal:", JOURNAUX_SPECIALITE.get(spec_fr, []))
                 elif choix_journaux == "Journaux de la spécialité":
                     journal_selectionne = "SPECIALITE"
                 else:
                     journal_selectionne = "TOUS"
-                    
             else:
                 spec_fr = None
-                
                 inclure_specialite = st.checkbox("🔬 Cibler une spécialité", value=False)
                 
                 if inclure_specialite:
                     spec_combo = st.selectbox("Spécialité:", list(TRAD.keys()))
-                    
                     st.subheader("📰 Journaux")
-                    choix_journaux = st.radio(
-                        "Limiter à:",
-                        ["Tous les journaux PubMed",
-                         "Journaux de la spécialité",
-                         "Un journal spécifique"]
-                    )
+                    choix_journaux = st.radio("Limiter à:", ["Tous les journaux PubMed", "Journaux de la spécialité", "Un journal spécifique"])
                     
                     if choix_journaux == "Un journal spécifique":
-                        journaux_dispo = JOURNAUX_SPECIALITE.get(spec_combo, [])
-                        journal_selectionne = st.selectbox("Journal:", journaux_dispo)
+                        journal_selectionne = st.selectbox("Journal:", JOURNAUX_SPECIALITE.get(spec_combo, []))
                     elif choix_journaux == "Journaux de la spécialité":
                         journal_selectionne = "SPECIALITE"
                     else:
@@ -537,58 +463,23 @@ with tab1:
                 else:
                     spec_combo = None
                     journal_selectionne = "TOUS"
-                    st.info("🌐 Recherche dans TOUS les journaux PubMed")
                 
-                mots_cles_custom = st.text_area(
-                    "🔎 Mots-clés",
-                    placeholder="Ex: hypertension gravidique",
-                    height=80
-                )
-                
-                if mots_cles_custom:
-                    with st.expander("🔍 Aperçu traduction"):
-                        terme_en = traduire_mots_cles(mots_cles_custom)
-                        st.code(f"FR: {mots_cles_custom}\nEN: {terme_en}")
+                mots_cles_custom = st.text_area("🔎 Mots-clés", placeholder="Ex: hypertension gravidique", height=80)
             
-            st.subheader("🎯 Zone de recherche")
-            zone_recherche = st.radio(
-                "Chercher dans:",
-                ["Titre et résumé", "Titre uniquement", "Résumé uniquement"]
-            )
+            st.subheader("🎯 Zone")
+            zone_recherche = st.radio("Chercher dans:", ["Titre et résumé", "Titre uniquement", "Résumé uniquement"])
             
             st.subheader("📅 Période")
-            
             col1, col2 = st.columns(2)
-            
             with col1:
                 st.write("**Début**")
-                date_debut = st.date_input(
-                    "Début",
-                    value=date(2024, 1, 1),
-                    min_value=date(2000, 1, 1),
-                    max_value=date.today(),
-                    format="DD/MM/YYYY",
-                    label_visibility="collapsed"
-                )
-            
+                date_debut = st.date_input("Début", value=date(2024, 1, 1), format="DD/MM/YYYY", label_visibility="collapsed")
             with col2:
                 st.write("**Fin**")
-                date_fin = st.date_input(
-                    "Fin",
-                    value=date.today(),
-                    min_value=date(2000, 1, 1),
-                    max_value=date.today(),
-                    format="DD/MM/YYYY",
-                    label_visibility="collapsed"
-                )
+                date_fin = st.date_input("Fin", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
             
             st.subheader("🔬 Filtres")
-            
-            mode_contenu = st.radio(
-                "Type:",
-                ["PDF complets uniquement", "Titre + résumé", "Titre uniquement"]
-            )
-            
+            mode_contenu = st.radio("Type:", ["PDF complets uniquement", "Titre + résumé", "Titre uniquement"])
             type_etude = st.selectbox("Type d'étude", list(TYPES_ETUDE.keys()))
             nb_max = st.slider("Max résultats", 10, 200, 50, 10)
             
@@ -608,7 +499,6 @@ with tab1:
                 
                 with st.spinner("🌐 Traduction..."):
                     term = traduire_mots_cles(mots_cles_custom)
-                    st.info(f"🔄 Recherche: `{term}`")
                 
                 display_term = f"Mots-clés: {mots_cles_custom}"
                 
@@ -645,9 +535,6 @@ with tab1:
             
             query = " AND ".join(query_parts)
             
-            with st.expander("🔍 Requête PubMed"):
-                st.code(query)
-            
             base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": nb_max, "sort": "date"}
             
@@ -664,7 +551,7 @@ with tab1:
                 count = data.get("esearchresult", {}).get("count", "0")
                 
                 if not ids:
-                    st.warning(f"⚠️ Aucun article pour: `{term}`")
+                    st.warning(f"⚠️ Aucun article")
                     st.stop()
                 
                 st.success(f"✅ {count} articles - Affichage de {len(ids)}")
@@ -688,6 +575,7 @@ with tab1:
             except Exception as e:
                 st.error(f"❌ {str(e)}")
     
+    # ÉTAPE 2
     elif st.session_state.mode_etape == 2:
         st.header("📑 Étape 2 : Sélection")
         
@@ -758,18 +646,14 @@ with tab1:
                     def callback(msg):
                         status_box.info(msg)
                     
-                    pdf_texte_fr, erreur = telecharger_et_extraire_pdf(
-                        pmid,
-                        mode_traduction=mode_trad,
-                        progress_callback=callback
-                    )
+                    pdf_texte_fr, erreur = telecharger_et_extraire_pdf(pmid, mode_traduction=mode_trad, progress_callback=callback)
                     
                     status_box.empty()
                     
                     if pdf_texte_fr:
                         st.success(f"✅ PDF extrait et traduit ({len(pdf_texte_fr)} caractères)")
                         
-                        with st.expander("📄 Lire le PDF complet"):
+                        with st.expander("📄 Lire le PDF"):
                             st.text_area("Contenu:", pdf_texte_fr, height=400, key=f"pdf_{pmid}")
                         
                         with st.spinner("🤖 Analyse IA..."):
@@ -777,7 +661,7 @@ with tab1:
                                 genai.configure(api_key=G_KEY)
                                 model = genai.GenerativeModel('gemini-2.0-flash-exp')
                                 
-                                prompt = f"""Analyse médicale approfondie.
+                                prompt = f"""Analyse médicale.
 
 Titre: {article_info['title_fr']}
 Journal: {article_info['journal']} ({article_info['year']})
@@ -785,7 +669,7 @@ Journal: {article_info['journal']} ({article_info['year']})
 Contenu:
 {pdf_texte_fr}
 
-Analyse en français:
+Analyse:
 
 ## Objectif
 ## Méthodologie
@@ -811,74 +695,155 @@ Analyse en français:
                                     'analyse_ia': analyse
                                 }
                             except Exception as e:
-                                st.error(f"❌ Erreur analyse: {str(e)}")
+                                st.error(f"❌ Erreur: {str(e)}")
                     else:
                         st.error(f"❌ {erreur}")
-                        st.info(f"💡 Accès direct: https://pubmed.ncbi.nlm.nih.gov/{pmid}/")
                     
                     st.divider()
                 
+                # PASSER À ÉTAPE 3
                 if st.session_state.analyses_individuelles:
-                    st.header("📚 Étape 3 : Sélection finale")
+                    st.session_state.mode_etape = 3
+                    st.rerun()
+    
+    # ÉTAPE 3 : SÉLECTION FINALE
+    elif st.session_state.mode_etape == 3:
+        st.header("📚 Étape 3 : Sélection finale")
+        
+        st.info("Sélectionnez les articles à inclure dans le PDF et le podcast")
+        
+        articles_finaux_ids = []
+        
+        for pmid, data in st.session_state.analyses_individuelles.items():
+            col_check, col_info = st.columns([0.1, 0.9])
+            
+            with col_check:
+                include = st.checkbox("", key=f"final_{pmid}", value=True, label_visibility="collapsed")
+            
+            with col_info:
+                st.markdown(f"**{data['title_fr']}**")
+                st.caption(f"{data['journal']} | {data['date_pub']}")
+                
+                # AFFICHER L'ANALYSE ICI
+                with st.expander("🤖 Voir l'analyse IA"):
+                    st.markdown(data['analyse_ia'])
+            
+            if include:
+                articles_finaux_ids.append(pmid)
+            
+            st.divider()
+        
+        if articles_finaux_ids:
+            st.success(f"✅ {len(articles_finaux_ids)} article(s) sélectionné(s)")
+            
+            if st.button("📦 GÉNÉRER LES FICHIERS", type="primary", use_container_width=True):
+                
+                articles_finaux = [st.session_state.analyses_individuelles[pmid] for pmid in articles_finaux_ids]
+                
+                with st.spinner("📦 Génération des fichiers..."):
+                    pdf_final = generer_pdf_selectionne(
+                        st.session_state.info_recherche['spec'],
+                        st.session_state.info_recherche['periode'],
+                        articles_finaux
+                    )
                     
-                    articles_finaux = []
-                    
-                    for pmid, data in st.session_state.analyses_individuelles.items():
-                        col_check, col_info = st.columns([0.1, 0.9])
-                        
-                        with col_check:
-                            include = st.checkbox("", key=f"final_{pmid}", value=True, label_visibility="collapsed")
-                        
-                        with col_info:
-                            st.markdown(f"**{data['title_fr']}**")
-                            st.caption(f"{data['journal']} | {data['date_pub']}")
-                        
-                        if include:
-                            articles_finaux.append(data)
-                        
-                        st.divider()
-                    
-                    if articles_finaux:
-                        st.success(f"✅ {len(articles_finaux)} pour PDF et podcast")
-                        
-                        with st.spinner("📦 Génération..."):
-                            pdf_final = generer_pdf_selectionne(
-                                st.session_state.info_recherche['spec'],
-                                st.session_state.info_recherche['periode'],
-                                articles_finaux
-                            )
-                            
-                            notebooklm = generer_notebooklm_selectionne(articles_finaux)
-                        
-                        st.divider()
-                        st.subheader("📥 Téléchargements")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.download_button(
-                                "📄 PDF Final",
-                                pdf_final,
-                                f"veille_{datetime.now().strftime('%Y%m%d')}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
-                        
-                        with col2:
-                            st.download_button(
-                                "🎙️ NotebookLM",
-                                notebooklm,
-                                f"podcast_{datetime.now().strftime('%Y%m%d')}.txt",
-                                use_container_width=True
-                            )
-                        
-                        st.link_button("🔗 NotebookLM", "https://notebooklm.google.com", use_container_width=True)
-                        
-                        if st.button("🔄 Nouvelle recherche", use_container_width=True):
-                            st.session_state.mode_etape = 1
-                            st.session_state.articles_previsualises = []
-                            st.session_state.analyses_individuelles = {}
-                            st.rerun()
+                    notebooklm = generer_notebooklm_selectionne(articles_finaux)
+                
+                # SAUVEGARDER dans session_state
+                st.session_state.fichiers_finaux = {
+                    'pdf': pdf_final,
+                    'notebooklm': notebooklm,
+                    'articles': articles_finaux
+                }
+                
+                # PASSER À ÉTAPE 4
+                st.session_state.mode_etape = 4
+                st.rerun()
+    
+    # ÉTAPE 4 : TÉLÉCHARGEMENTS
+    elif st.session_state.mode_etape == 4:
+        st.header("🎉 Veille terminée !")
+        
+        st.success(f"✅ {len(st.session_state.fichiers_finaux['articles'])} article(s) analysé(s)")
+        
+        # RÉCAPITULATIF
+        st.subheader("📋 Récapitulatif")
+        for i, article in enumerate(st.session_state.fichiers_finaux['articles'], 1):
+            with st.expander(f"📄 Article {i} - {article['title_fr'][:80]}..."):
+                st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
+                st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
+                st.markdown("### 🤖 Analyse IA")
+                st.markdown(article['analyse_ia'])
+        
+        st.divider()
+        
+        # TÉLÉCHARGEMENTS
+        st.subheader("📥 Téléchargements")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.download_button(
+                "📄 PDF Final",
+                st.session_state.fichiers_finaux['pdf'],
+                f"veille_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        
+        with col2:
+            st.download_button(
+                "🎙️ Fichier NotebookLM",
+                st.session_state.fichiers_finaux['notebooklm'],
+                f"podcast_{datetime.now().strftime('%Y%m%d')}.txt",
+                use_container_width=True,
+                help="Téléchargez ce fichier puis importez-le sur NotebookLM"
+            )
+        
+        st.divider()
+        
+        # GUIDE NOTEBOOKLM
+        st.subheader("🎙️ Créer votre podcast avec NotebookLM")
+        
+        st.markdown("""
+### 📝 Instructions :
+
+1. **Téléchargez** le fichier NotebookLM ci-dessus (clic sur le bouton bleu)
+
+2. **Allez sur** https://notebooklm.google.com
+
+3. **Créez un nouveau notebook** (bouton "+ New notebook")
+
+4. **Importez le fichier** :
+   - Cliquez sur "Sources" → "Upload"
+   - Sélectionnez le fichier `.txt` téléchargé
+   - Attendez l'import (quelques secondes)
+
+5. **Générez le podcast** :
+   - Cliquez sur l'onglet "Notebook guide" en bas
+   - Cliquez sur "Generate" (ou "Audio overview")
+   - Attendez 2-5 minutes ⏳
+
+6. **Écoutez et téléchargez** :
+   - Le podcast apparaît dans le player audio
+   - Cliquez sur "⋮" → "Download" pour le télécharger en MP3
+
+### ✨ Résultat :
+Un podcast professionnel de **10-20 minutes** avec 2 voix IA discutant de vos articles médicaux en anglais !
+
+**Gratuit et illimité** 🎉
+        """)
+        
+        st.link_button("🔗 Ouvrir NotebookLM", "https://notebooklm.google.com", use_container_width=True)
+        
+        st.divider()
+        
+        if st.button("🔄 Nouvelle recherche", use_container_width=True):
+            st.session_state.mode_etape = 1
+            st.session_state.articles_previsualises = []
+            st.session_state.analyses_individuelles = {}
+            st.session_state.fichiers_finaux = {}
+            st.rerun()
 
 with tab2:
     st.header("📚 Historique")
@@ -909,12 +874,9 @@ with tab4:
 
 1. https://www.deepl.com/pro#developer
 2. API Pro+ (29,99€/mois)
-3. Settings → Secrets:
-```toml
-DEEPL_KEY = "votre-clé"
-```
+3. Settings → Secrets → DEEPL_KEY
 
-Résiliation facile: Account → Cancel
+Résiliation: Account → Cancel
     """)
 
 st.markdown("---")
