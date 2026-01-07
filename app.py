@@ -149,130 +149,173 @@ def traduire_texte(texte, mode="gemini"):
     except:
         return texte
 
-def get_pdf_links_multiples(pmid):
-    """Récupère TOUTES les URLs possibles pour un PMID"""
+def obtenir_tous_liens_pdf(pmid):
+    """Obtient TOUS les liens PDF possibles incluant DOI et liens externes"""
     try:
-        urls_possibles = []
+        urls = []
         pmc_id = None
+        doi = None
         
-        # Méthode 1 : elink vers PMC
-        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
-        params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "xml", "linkname": "pubmed_pmc"}
+        # 1. Récupérer les métadonnées complètes
+        fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+        fetch_params = {"db": "pubmed", "id": pmid, "retmode": "xml"}
         
         try:
-            response = requests.get(base_url, params=params, timeout=10)
+            response = requests.get(fetch_url, params=fetch_params, timeout=10)
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
-                pmc_elem = root.find('.//Link/Id')
+                
+                # PMC ID
+                pmc_elem = root.find('.//ArticleId[@IdType="pmc"]')
                 if pmc_elem is not None:
-                    pmc_id = pmc_elem.text
-                    urls_possibles.extend([
+                    pmc_id = pmc_elem.text.replace("PMC", "")
+                
+                # DOI
+                doi_elem = root.find('.//ArticleId[@IdType="doi"]')
+                if doi_elem is not None:
+                    doi = doi_elem.text
+        except:
+            pass
+        
+        # 2. Si PMC ID trouvé, ajouter URLs PMC
+        if pmc_id:
+            urls.extend([
+                f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
+                f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/main.pdf",
+                f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render",
+                f"https://europepmc.org/backend/ptpmcrender.fcgi?accid=PMC{pmc_id}&blobtype=pdf"
+            ])
+        
+        # 3. Si DOI trouvé, ajouter liens éditeurs
+        if doi:
+            # DOI direct
+            urls.append(f"https://doi.org/{doi}")
+            
+            # Unpaywall (accès ouvert)
+            urls.append(f"https://api.unpaywall.org/v2/{doi}?email=research@example.com")
+        
+        # 4. eLink vers PMC (backup)
+        try:
+            elink_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+            elink_params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "xml"}
+            elink_response = requests.get(elink_url, params=elink_params, timeout=10)
+            
+            if elink_response.status_code == 200:
+                elink_root = ET.fromstring(elink_response.content)
+                elink_pmc = elink_root.find('.//Link/Id')
+                if elink_pmc is not None and not pmc_id:
+                    pmc_id = elink_pmc.text
+                    urls.extend([
                         f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
-                        f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/main.pdf",
-                        f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render",
-                        f"https://europepmc.org/backend/ptpmcrender.fcgi?accid=PMC{pmc_id}&blobtype=pdf",
-                        f"https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{pmc_id[:2]}/{pmc_id[:4]}/PMC{pmc_id}.pdf"
+                        f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render"
                     ])
         except:
             pass
         
-        # Méthode 2 : efetch pour chercher DOI
-        try:
-            fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-            fetch_params = {"db": "pubmed", "id": pmid, "retmode": "xml"}
-            fetch_response = requests.get(fetch_url, params=fetch_params, timeout=10)
-            
-            if fetch_response.status_code == 200:
-                fetch_root = ET.fromstring(fetch_response.content)
-                
-                # DOI
-                doi_elem = fetch_root.find('.//ArticleId[@IdType="doi"]')
-                if doi_elem is not None:
-                    doi = doi_elem.text
-                    urls_possibles.append(f"https://doi.org/{doi}")
-                
-                # PMC si non trouvé avant
-                if not pmc_id:
-                    pmc_elem = fetch_root.find('.//ArticleId[@IdType="pmc"]')
-                    if pmc_elem is not None:
-                        pmc_id = pmc_elem.text.replace("PMC", "")
-                        urls_possibles.extend([
-                            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
-                            f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render"
-                        ])
-        except:
-            pass
-        
-        return urls_possibles, pmc_id
+        return urls, pmc_id, doi
         
     except Exception as e:
-        return [], None
+        return [], None, None
 
 def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callback=None):
-    """Version ULTRA ROBUSTE avec multiples tentatives"""
+    """Version ULTRA optimisée avec unpaywall et multiples sources"""
     try:
-        urls_possibles, pmc_id = get_pdf_links_multiples(pmid)
+        urls_possibles, pmc_id, doi = obtenir_tous_liens_pdf(pmid)
         
         if not urls_possibles:
-            return None, "PDF non disponible en libre accès sur PubMed Central"
+            return None, "PDF non disponible en libre accès"
         
         if progress_callback:
-            progress_callback(f"📥 Recherche PDF pour PMID {pmid}...")
+            progress_callback(f"📥 Recherche PDF PMID {pmid}...")
         
         pdf_content = None
         url_reussie = None
         
-        # Multiples User-Agents
+        # User-Agents variés
         headers_list = [
-            {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/pdf,*/*'},
-            {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Accept': 'application/pdf'},
-            {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36', 'Accept': 'application/pdf'},
-            {'User-Agent': 'Academic Research Tool 1.0', 'Accept': 'application/pdf'},
+            {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            },
+            {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Accept': 'application/pdf'
+            },
+            {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+                'Accept': 'application/pdf,text/html'
+            }
         ]
         
         # Essayer CHAQUE URL avec CHAQUE header
         for url in urls_possibles:
             if pdf_content:
                 break
-                
+            
+            # Cas spécial : Unpaywall API
+            if 'unpaywall.org' in url:
+                try:
+                    resp = requests.get(url, timeout=15)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get('is_oa') and data.get('best_oa_location'):
+                            pdf_url = data['best_oa_location'].get('url_for_pdf')
+                            if pdf_url:
+                                urls_possibles.insert(0, pdf_url)
+                except:
+                    pass
+                continue
+            
             for headers in headers_list:
                 try:
                     response = requests.get(
-                        url, 
-                        timeout=30, 
-                        allow_redirects=True, 
+                        url,
+                        timeout=30,
+                        allow_redirects=True,
                         headers=headers,
-                        verify=True,
                         stream=True
                     )
                     
                     if response.status_code == 200:
-                        # Vérifier si c'est un PDF
                         content_type = response.headers.get('Content-Type', '').lower()
                         
                         # Lire le début du contenu
-                        content_start = response.content[:10]
+                        content_preview = response.content[:20]
                         
-                        # Vérifier signature PDF
-                        if b'%PDF' in content_start or 'application/pdf' in content_type:
+                        # Vérifier si c'est un PDF
+                        is_pdf = (
+                            b'%PDF' in content_preview or
+                            'application/pdf' in content_type or
+                            'pdf' in content_type
+                        )
+                        
+                        if is_pdf:
                             pdf_content = response.content
                             url_reussie = url
+                            if progress_callback:
+                                progress_callback(f"✅ PDF trouvé ({len(pdf_content)} bytes)")
                             break
                 
                 except Exception as e:
                     continue
                 
-                # Petite pause entre tentatives
-                time.sleep(0.3)
+                time.sleep(0.2)
         
         if not pdf_content:
+            msg_erreur = "PDF non accessible"
             if pmc_id:
-                return None, f"PDF non accessible (PMC{pmc_id}). Abonnement institutionnel peut être nécessaire."
-            else:
-                return None, "PDF non disponible en libre accès."
+                msg_erreur += f" (PMC{pmc_id})"
+            if doi:
+                msg_erreur += f" - DOI: {doi}"
+            msg_erreur += ". Abonnement institutionnel peut être nécessaire."
+            return None, msg_erreur
         
         if progress_callback:
-            progress_callback(f"📄 Extraction du texte ({len(pdf_content)} bytes)...")
+            progress_callback(f"📄 Extraction texte...")
         
         try:
             pdf_file = BytesIO(pdf_content)
@@ -291,22 +334,22 @@ def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callbac
                     continue
             
             if len(texte_complet) < 100:
-                return None, "Contenu PDF insuffisant (texte non extractible)"
+                return None, "Contenu PDF insuffisant"
             
             if len(texte_complet) > 12000:
-                texte_complet = texte_complet[:12000] + "\n\n[PDF tronqué]"
+                texte_complet = texte_complet[:12000] + "\n\n[Tronqué]"
             
             if progress_callback:
-                progress_callback(f"🌐 Traduction en cours...")
+                progress_callback(f"🌐 Traduction...")
             
-            # Traduire par chunks
+            # Traduction
             chunk_size = 4000
             texte_traduit = ""
             
             for i in range(0, len(texte_complet), chunk_size):
                 chunk = texte_complet[i:i+chunk_size]
-                trad_chunk = traduire_texte(chunk, mode=mode_traduction)
-                texte_traduit += trad_chunk + "\n\n"
+                trad = traduire_texte(chunk, mode=mode_traduction)
+                texte_traduit += trad + "\n\n"
                 
                 if progress_callback and i > 0:
                     pct = min(100, int((i/len(texte_complet))*100))
@@ -315,10 +358,10 @@ def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callbac
             return texte_traduit, None
             
         except Exception as e:
-            return None, f"Erreur extraction PDF: {str(e)}"
+            return None, f"Erreur extraction: {str(e)}"
             
     except Exception as e:
-        return None, f"Erreur générale: {str(e)}"
+        return None, f"Erreur: {str(e)}"
 
 def traduire_mots_cles(mots):
     try:
@@ -460,52 +503,97 @@ with tab1:
         with st.sidebar:
             st.header("⚙️ Paramètres")
             
-            mode_recherche = st.radio("Mode", ["Par spécialité", "Par mots-clés"])
+            mode_recherche = st.radio("Mode de recherche", ["Par spécialité", "Par mots-clés"])
             
+            # CORRECTION : Options complètes pour les DEUX modes
             if mode_recherche == "Par spécialité":
                 spec_fr = st.selectbox("🏥 Spécialité", list(TRAD.keys()))
                 mots_cles_custom = ""
+                spec_combo = None
                 
                 st.subheader("📰 Journaux")
-                choix_journaux = st.radio("Limiter à:", ["Tous PubMed", "Journaux spécialité", "Un journal"])
+                choix_journaux = st.radio(
+                    "Limiter la recherche à:",
+                    ["Tous les journaux PubMed", "Journaux de la spécialité uniquement", "Un journal spécifique"]
+                )
                 
-                if choix_journaux == "Un journal":
-                    journal_selectionne = st.selectbox("Journal:", JOURNAUX_SPECIALITE.get(spec_fr, []))
-                elif choix_journaux == "Journaux spécialité":
+                if choix_journaux == "Un journal spécifique":
+                    journaux_dispo = JOURNAUX_SPECIALITE.get(spec_fr, [])
+                    journal_selectionne = st.selectbox("Choisir le journal:", journaux_dispo)
+                elif choix_journaux == "Journaux de la spécialité uniquement":
                     journal_selectionne = "SPECIALITE"
                 else:
                     journal_selectionne = "TOUS"
-            else:
+                    
+            else:  # Par mots-clés
                 spec_fr = None
-                mots_cles_custom = st.text_area("🔎 Mots-clés", height=80)
-                journal_selectionne = "TOUS"
+                mots_cles_custom = st.text_area("🔎 Mots-clés", placeholder="Ex: hypertension gravidique", height=80)
+                
+                # AJOUT : Choix spécialité optionnel pour mots-clés
+                inclure_specialite = st.checkbox("🔬 Cibler une spécialité", value=False)
+                
+                if inclure_specialite:
+                    spec_combo = st.selectbox("Spécialité:", list(TRAD.keys()))
+                    
+                    st.subheader("📰 Journaux")
+                    choix_journaux = st.radio(
+                        "Limiter la recherche à:",
+                        ["Tous les journaux PubMed",
+                         "Journaux de la spécialité uniquement",
+                         "Un journal spécifique"]
+                    )
+                    
+                    if choix_journaux == "Un journal spécifique":
+                        journaux_dispo = JOURNAUX_SPECIALITE.get(spec_combo, [])
+                        journal_selectionne = st.selectbox("Choisir le journal:", journaux_dispo)
+                    elif choix_journaux == "Journaux de la spécialité uniquement":
+                        journal_selectionne = "SPECIALITE"
+                    else:
+                        journal_selectionne = "TOUS"
+                else:
+                    spec_combo = None
+                    journal_selectionne = "TOUS"
+                    st.info("🌐 Recherche dans TOUS les journaux PubMed (30 000+ revues)")
             
             st.subheader("📅 Période")
             col1, col2 = st.columns(2)
             with col1:
-                date_debut = st.date_input("Début", value=date(2024, 1, 1), format="DD/MM/YYYY")
+                st.write("**Début**")
+                date_debut = st.date_input("Début", value=date(2024, 1, 1), format="DD/MM/YYYY", label_visibility="collapsed")
             with col2:
-                date_fin = st.date_input("Fin", value=date.today(), format="DD/MM/YYYY")
+                st.write("**Fin**")
+                date_fin = st.date_input("Fin", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
             
             st.subheader("🔬 Filtres")
-            mode_contenu = st.radio("Type:", ["PDF complets uniquement", "Titre + résumé"])
-            type_etude = st.selectbox("Étude", list(TYPES_ETUDE.keys()))
-            nb_max = st.slider("Max", 10, 200, 50, 10)
+            mode_contenu = st.radio("Type de contenu:", ["PDF complets uniquement", "Titre + résumé"])
+            type_etude = st.selectbox("Type d'étude", list(TYPES_ETUDE.keys()))
+            nb_max = st.slider("Nombre max de résultats", 10, 200, 50, 10)
             
-            traduire_titres = st.checkbox("🌐 Traduire titres", value=True)
+            traduire_titres = st.checkbox("🌐 Traduire les titres en français", value=True)
         
-        if st.button("🔍 LANCER", type="primary", use_container_width=True):
+        if st.button("🔍 LANCER LA RECHERCHE", type="primary", use_container_width=True):
+            
+            # Construction requête
             if mode_recherche == "Par spécialité":
                 term = TRAD[spec_fr]
                 display_term = spec_fr
                 spec_utilisee = spec_fr
             else:
                 if not mots_cles_custom:
-                    st.error("⚠️ Entrez mots-clés")
+                    st.error("⚠️ Veuillez entrer des mots-clés")
                     st.stop()
-                term = traduire_mots_cles(mots_cles_custom)
+                
+                with st.spinner("🌐 Traduction des mots-clés..."):
+                    term = traduire_mots_cles(mots_cles_custom)
+                    st.info(f"🔄 Recherche PubMed : `{term}`")
+                
                 display_term = f"Mots-clés: {mots_cles_custom}"
-                spec_utilisee = "Personnalisé"
+                
+                if inclure_specialite and spec_combo:
+                    term = f"{term} AND {TRAD[spec_combo]}"
+                    spec_utilisee = spec_combo
+                else:
+                    spec_utilisee = "Personnalisé"
             
             query_parts = [term]
             query_parts.append(f"{date_debut.strftime('%Y/%m/%d')}:{date_fin.strftime('%Y/%m/%d')}[pdat]")
@@ -513,18 +601,26 @@ with tab1:
             if "PDF complets" in mode_contenu:
                 query_parts.append("free full text[sb]")
             
+            # Gestion journaux
             if journal_selectionne == "SPECIALITE":
-                journaux = JOURNAUX_SPECIALITE.get(spec_utilisee, [])
+                journaux = JOURNAUX_SPECIALITE.get(spec_utilisee if mode_recherche == "Par spécialité" else spec_combo, [])
                 if journaux:
                     journaux_q = " OR ".join([f'"{j}"[Journal]' for j in journaux])
                     query_parts.append(f"({journaux_q})")
+                    st.info(f"📰 Recherche limitée aux {len(journaux)} journaux de référence")
             elif journal_selectionne != "TOUS":
                 query_parts.append(f'"{journal_selectionne}"[Journal]')
+                st.info(f"📰 Recherche limitée au journal: {journal_selectionne}")
+            else:
+                st.info("🌐 Recherche dans TOUS les journaux PubMed")
             
             if TYPES_ETUDE[type_etude]:
                 query_parts.append(f"{TYPES_ETUDE[type_etude]}[ptyp]")
             
             query = " AND ".join(query_parts)
+            
+            with st.expander("🔍 Détails de la requête PubMed"):
+                st.code(query)
             
             base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
             params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": nb_max, "sort": "date"}
@@ -542,10 +638,16 @@ with tab1:
                 count = data.get("esearchresult", {}).get("count", "0")
                 
                 if not ids:
-                    st.warning("Aucun article")
+                    st.warning(f"⚠️ Aucun article trouvé pour : `{term}`")
+                    st.info("""
+**Suggestions:**
+- Élargissez la période
+- Retirez les filtres (journaux, type d'étude)
+- Essayez des mots-clés plus généraux
+                    """)
                     st.stop()
                 
-                st.success(f"✅ {count} articles - {len(ids)} affichés")
+                st.success(f"✅ {count} articles trouvés - Affichage de {len(ids)}")
                 
                 with st.spinner("Récupération..."):
                     articles_preview = recuperer_titres_rapides(ids, traduire_titres=traduire_titres)
@@ -570,12 +672,12 @@ with tab1:
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Tout"):
+            if st.button("✅ Tout sélectionner"):
                 for i in range(len(st.session_state.articles_previsualises)):
                     st.session_state[f"select_{i}"] = True
                 st.rerun()
         with col2:
-            if st.button("↩️ Nouvelle"):
+            if st.button("↩️ Nouvelle recherche"):
                 st.session_state.mode_etape = 1
                 st.session_state.articles_previsualises = []
                 st.rerun()
@@ -590,7 +692,6 @@ with tab1:
                 selected = st.checkbox("", key=f"select_{i}", label_visibility="collapsed")
             with col_i:
                 st.markdown(f"**{i+1}. {article['title_fr']}**")
-                # CORRECTION : Lien cliquable vers PubMed
                 st.markdown(f"📰 {article['journal']} | 📅 {article['date_pub']} | [PMID {article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
             
             if selected:
@@ -622,32 +723,34 @@ with tab1:
                     status.empty()
                     
                     if pdf_texte:
-                        st.success(f"✅ PDF extrait ({len(pdf_texte)} car.)")
+                        st.success(f"✅ PDF extrait et traduit ({len(pdf_texte)} car.)")
                         
-                        with st.expander("📄 PDF"):
+                        with st.expander("📄 Lire le PDF traduit"):
                             st.text_area("", pdf_texte, height=400, key=f"pdf_{pmid}")
                         
-                        with st.spinner("🤖 Analyse..."):
+                        with st.spinner("🤖 Analyse IA..."):
                             try:
                                 genai.configure(api_key=G_KEY)
                                 model = genai.GenerativeModel('gemini-2.0-flash-exp')
                                 
-                                prompt = f"""Analyse médicale.
+                                prompt = f"""Analyse médicale approfondie.
 
 Titre: {article_info['title_fr']}
 
 {pdf_texte}
 
-Analyse:
+Analyse structurée:
 ## Objectif
 ## Méthodologie
-## Résultats
+## Résultats principaux
+## Implications cliniques
+## Limites
 ## Conclusion"""
                                 
                                 response = model.generate_content(prompt)
                                 analyse = response.text
                                 
-                                st.markdown("### 🤖 Analyse")
+                                st.markdown("### 🤖 Analyse IA")
                                 st.markdown(analyse)
                                 
                                 st.session_state.analyses_individuelles[pmid] = {
@@ -660,10 +763,10 @@ Analyse:
                                     'analyse_ia': analyse
                                 }
                             except Exception as e:
-                                st.error(f"Erreur: {str(e)}")
+                                st.error(f"Erreur analyse: {str(e)}")
                     else:
                         st.error(f"❌ {erreur}")
-                        st.info(f"💡 [Accès direct PubMed](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
+                        st.info(f"💡 L'article est peut-être accessible via votre institution : [Voir sur PubMed](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
                     
                     st.divider()
                 
@@ -683,7 +786,7 @@ Analyse:
             with col_i:
                 st.markdown(f"**{data['title_fr']}**")
                 st.caption(f"{data['journal']} | {data['date_pub']}")
-                with st.expander("🤖 Analyse"):
+                with st.expander("🤖 Voir l'analyse"):
                     st.markdown(data['analyse_ia'])
             
             if include:
@@ -693,7 +796,7 @@ Analyse:
         if articles_finaux_ids:
             st.success(f"✅ {len(articles_finaux_ids)} sélectionné(s)")
             
-            if st.button("📦 GÉNÉRER", type="primary", use_container_width=True):
+            if st.button("📦 GÉNÉRER LES FICHIERS", type="primary", use_container_width=True):
                 articles_finaux = [st.session_state.analyses_individuelles[pmid] for pmid in articles_finaux_ids]
                 
                 with st.spinner("Génération..."):
@@ -718,8 +821,7 @@ Analyse:
         
         st.success(f"✅ {len(st.session_state.fichiers_finaux['articles'])} article(s) analysé(s)")
         
-        # RÉCAPITULATIF
-        st.subheader("📋 Articles analysés")
+        st.subheader("📋 Récapitulatif")
         for i, article in enumerate(st.session_state.fichiers_finaux['articles'], 1):
             with st.expander(f"📄 Article {i} - {article['title_fr'][:60]}..."):
                 st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
@@ -730,7 +832,6 @@ Analyse:
         st.divider()
         st.subheader("📥 Téléchargements")
         
-        # CORRECTION : Afficher les fichiers comme text au lieu de download pour éviter bug mobile
         col1, col2 = st.columns(2)
         
         with col1:
@@ -739,36 +840,28 @@ Analyse:
                 st.session_state.fichiers_finaux['pdf'],
                 f"veille_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
-                use_container_width=True,
-                key="dl_pdf"
+                use_container_width=True
             )
         
         with col2:
-            # AFFICHER le contenu NotebookLM directement
-            with st.expander("📋 Voir le contenu NotebookLM"):
+            with st.expander("📋 Voir le texte NotebookLM"):
                 st.text_area(
-                    "Copier ce texte et le coller dans NotebookLM:",
+                    "Copier/coller dans NotebookLM:",
                     st.session_state.fichiers_finaux['notebooklm'],
-                    height=400,
-                    key="notebooklm_display"
+                    height=400
                 )
             
-            # Bouton de téléchargement en plus
             st.download_button(
-                "💾 Télécharger fichier NotebookLM",
+                "💾 Télécharger NotebookLM",
                 st.session_state.fichiers_finaux['notebooklm'],
                 f"podcast_{datetime.now().strftime('%Y%m%d')}.txt",
-                use_container_width=True,
-                key="dl_notebooklm"
+                use_container_width=True
             )
         
-        st.divider()
-        
-        st.info("💡 **Sur mobile** : Copier le texte NotebookLM ci-dessus et le coller directement dans NotebookLM.google.com")
-        
+        st.info("💡 **Mobile** : Utilisez l'expander ci-dessus pour copier/coller le texte")
         st.link_button("🔗 Ouvrir NotebookLM", "https://notebooklm.google.com", use_container_width=True)
         
-        if st.button("🔄 Nouvelle recherche", use_container_width=True, key="nouvelle_rech"):
+        if st.button("🔄 Nouvelle recherche", use_container_width=True):
             st.session_state.mode_etape = 1
             st.session_state.articles_previsualises = []
             st.session_state.analyses_individuelles = {}
@@ -778,18 +871,18 @@ Analyse:
 with tab2:
     st.header("🔗 Sources complémentaires")
     
-    spec_src = st.selectbox("Spécialité:", list(SOURCES_PAR_SPECIALITE.keys()))
+    spec_src = st.selectbox("Choisir une spécialité:", list(SOURCES_PAR_SPECIALITE.keys()))
     
     st.markdown(f"### {len(SOURCES_PAR_SPECIALITE[spec_src])} sources pour {spec_src}")
     
     for nom, info in SOURCES_PAR_SPECIALITE[spec_src].items():
         with st.expander(f"📚 {nom}"):
             st.markdown(f"**{info['description']}**")
-            st.link_button("🏠 Accueil", info['url'])
+            st.link_button("🏠 Site officiel", info['url'])
             
-            mots = st.text_input("Rechercher:", key=f"src_{nom}")
+            mots = st.text_input("Rechercher dans cette source:", key=f"src_{nom}")
             if mots:
-                st.link_button("🔍 Rechercher", f"{info['recherche']}{mots}")
+                st.link_button("🔍 Lancer la recherche", f"{info['recherche']}{mots}")
 
 with tab3:
     st.header("⚙️ Configuration")
@@ -797,23 +890,26 @@ with tab3:
     st.markdown("""
 ## 🌐 DeepL Pro+
 
-**Prix:** 29,99€/mois  
-**Caractères:** 1 million/mois
+**Tarif:** 29,99€/mois  
+**Volume:** 1 million caractères/mois
 
 ### Installation
-1. https://www.deepl.com/pro#developer
-2. S'abonner à API Pro+
+1. S'inscrire sur https://www.deepl.com/pro#developer
+2. Choisir "API Pro+"
 3. Copier la clé API
-4. Settings → Secrets → `DEEPL_KEY`
+4. Ajouter dans Settings → Secrets:
+```toml
+DEEPL_KEY = "votre-clé-ici"
+```
 
 ### Résiliation
-Account → Subscription → Cancel  
-✅ Aucun engagement
+Simple et rapide : Account → Subscription → Cancel  
+✅ Sans engagement
     """)
     
     if DEEPL_KEY:
-        st.success("✅ DeepL configuré")
+        st.success("✅ DeepL Pro+ configuré")
     else:
-        st.info("ℹ️ Gemini 2.0 Flash actif (gratuit)")
+        st.info("ℹ️ Traduction : Gemini 2.0 Flash (gratuit)")
 
-st.caption("💊 Veille médicale | Gemini 2.0 Flash")
+st.caption("💊 Veille médicale professionnelle | Gemini 2.0 Flash")
