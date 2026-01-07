@@ -57,52 +57,53 @@ JOURNAUX_SPECIALITE = {
 
 SOURCES_PAR_SPECIALITE = {
     "Gynécologie": {
-        "CNGOF": {"url": "http://www.cngof.fr", "description": "Collège National des Gynécologues Obstétriciens Français", "recherche": "http://www.cngof.fr/?s="},
-        "ACOG": {"url": "https://www.acog.org", "description": "American College of Obstetricians and Gynecologists", "recherche": "https://www.acog.org/search?q="},
+        "CNGOF": {"url": "http://www.cngof.fr", "description": "Collège National Gynécologues Obstétriciens", "recherche": "http://www.cngof.fr/?s="},
+        "ACOG": {"url": "https://www.acog.org", "description": "American College Obstetricians Gynecologists", "recherche": "https://www.acog.org/search?q="},
         "RCOG": {"url": "https://www.rcog.org.uk", "description": "Royal College UK", "recherche": "https://www.rcog.org.uk/search?q="},
-        "HAS": {"url": "https://www.has-sante.fr", "description": "Haute Autorité de Santé", "recherche": "https://www.has-sante.fr/jcms/recherche?text="},
-        "SOGC": {"url": "https://www.sogc.org", "description": "Society of Obstetricians Canada", "recherche": "https://www.sogc.org/en/content/search.aspx?q="}
+        "HAS": {"url": "https://www.has-sante.fr", "description": "Haute Autorité Santé", "recherche": "https://www.has-sante.fr/jcms/recherche?text="},
+        "SOGC": {"url": "https://www.sogc.org", "description": "Society Obstetricians Canada", "recherche": "https://www.sogc.org/en/content/search.aspx?q="}
     },
     "Obstétrique": {
-        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF Obstétrique", "recherche": "http://www.cngof.fr/?s="},
+        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF", "recherche": "http://www.cngof.fr/?s="},
         "ACOG": {"url": "https://www.acog.org", "description": "ACOG", "recherche": "https://www.acog.org/search?q="},
-        "WHO": {"url": "https://www.who.int/health-topics/maternal-health", "description": "OMS Santé maternelle", "recherche": "https://www.who.int/search?query="}
+        "WHO": {"url": "https://www.who.int/health-topics/maternal-health", "description": "OMS Santé maternelle", "recherche": "https://www.who.int/search?query="},
+        "FIGO": {"url": "https://www.figo.org", "description": "FIGO", "recherche": "https://www.figo.org/?s="}
     },
     "Anesthésie-Réanimation": {
-        "SFAR": {"url": "https://sfar.org", "description": "Société Française Anesthésie Réanimation", "recherche": "https://sfar.org/?s="},
-        "ASA": {"url": "https://www.asahq.org", "description": "American Society of Anesthesiologists", "recherche": "https://www.asahq.org/search?q="},
-        "ESA": {"url": "https://www.esaic.org", "description": "European Society Anaesthesiology", "recherche": "https://www.esaic.org/search?q="}
+        "SFAR": {"url": "https://sfar.org", "description": "SFAR", "recherche": "https://sfar.org/?s="},
+        "ASA": {"url": "https://www.asahq.org", "description": "ASA", "recherche": "https://www.asahq.org/search?q="},
+        "ESA": {"url": "https://www.esaic.org", "description": "ESA", "recherche": "https://www.esaic.org/search?q="}
     },
     "Endocrinologie": {
-        "SFE": {"url": "https://www.sfendocrino.org", "description": "Société Française Endocrinologie", "recherche": "https://www.sfendocrino.org/?s="},
-        "ADA": {"url": "https://diabetes.org", "description": "American Diabetes Association", "recherche": "https://diabetes.org/search?q="},
-        "EASD": {"url": "https://www.easd.org", "description": "European Association Diabetes", "recherche": "https://www.easd.org/search?q="}
+        "SFE": {"url": "https://www.sfendocrino.org", "description": "SFE", "recherche": "https://www.sfendocrino.org/?s="},
+        "ADA": {"url": "https://diabetes.org", "description": "ADA", "recherche": "https://diabetes.org/search?q="},
+        "EASD": {"url": "https://www.easd.org", "description": "EASD", "recherche": "https://www.easd.org/search?q="}
     },
     "Médecine Générale": {
         "HAS": {"url": "https://www.has-sante.fr", "description": "HAS", "recherche": "https://www.has-sante.fr/jcms/recherche?text="},
-        "CNGE": {"url": "https://www.cnge.fr", "description": "Collège National Généralistes", "recherche": "https://www.cnge.fr/?s="},
-        "NICE": {"url": "https://www.nice.org.uk", "description": "NICE UK", "recherche": "https://www.nice.org.uk/search?q="}
+        "CNGE": {"url": "https://www.cnge.fr", "description": "CNGE", "recherche": "https://www.cnge.fr/?s="},
+        "NICE": {"url": "https://www.nice.org.uk", "description": "NICE", "recherche": "https://www.nice.org.uk/search?q="}
     },
     "Chirurgie Gynécologique": {
-        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF Chirurgie", "recherche": "http://www.cngof.fr/?s="},
-        "AAGL": {"url": "https://www.aagl.org", "description": "Association Gynecologic Laparoscopy", "recherche": "https://www.aagl.org/search?q="}
+        "CNGOF": {"url": "http://www.cngof.fr", "description": "CNGOF", "recherche": "http://www.cngof.fr/?s="},
+        "AAGL": {"url": "https://www.aagl.org", "description": "AAGL", "recherche": "https://www.aagl.org/search?q="}
     },
     "Infertilité": {
-        "ESHRE": {"url": "https://www.eshre.eu", "description": "European Society Human Reproduction", "recherche": "https://www.eshre.eu/search?q="},
-        "ASRM": {"url": "https://www.asrm.org", "description": "American Society Reproductive Medicine", "recherche": "https://www.asrm.org/search?q="}
+        "ESHRE": {"url": "https://www.eshre.eu", "description": "ESHRE", "recherche": "https://www.eshre.eu/search?q="},
+        "ASRM": {"url": "https://www.asrm.org", "description": "ASRM", "recherche": "https://www.asrm.org/search?q="}
     },
     "Échographie Gynécologique": {
-        "ISUOG": {"url": "https://www.isuog.org", "description": "International Society Ultrasound", "recherche": "https://www.isuog.org/search.html?q="},
-        "CFEF": {"url": "http://www.cfef.org", "description": "Collège Français Échographie Fœtale", "recherche": "http://www.cfef.org/?s="}
+        "ISUOG": {"url": "https://www.isuog.org", "description": "ISUOG", "recherche": "https://www.isuog.org/search.html?q="},
+        "CFEF": {"url": "http://www.cfef.org", "description": "CFEF", "recherche": "http://www.cfef.org/?s="}
     },
     "Oncologie": {
-        "INCa": {"url": "https://www.e-cancer.fr", "description": "Institut National Cancer", "recherche": "https://www.e-cancer.fr/Recherche?SearchText="},
-        "NCCN": {"url": "https://www.nccn.org", "description": "National Comprehensive Cancer Network", "recherche": "https://www.nccn.org/search?q="},
-        "ESMO": {"url": "https://www.esmo.org", "description": "European Society Medical Oncology", "recherche": "https://www.esmo.org/search?q="}
+        "INCa": {"url": "https://www.e-cancer.fr", "description": "INCa", "recherche": "https://www.e-cancer.fr/Recherche?SearchText="},
+        "NCCN": {"url": "https://www.nccn.org", "description": "NCCN", "recherche": "https://www.nccn.org/search?q="},
+        "ESMO": {"url": "https://www.esmo.org", "description": "ESMO", "recherche": "https://www.esmo.org/search?q="}
     },
     "Pédiatrie": {
-        "SFP": {"url": "https://www.sfpediatrie.com", "description": "Société Française Pédiatrie", "recherche": "https://www.sfpediatrie.com/?s="},
-        "AAP": {"url": "https://www.aap.org", "description": "American Academy Pediatrics", "recherche": "https://www.aap.org/search?q="}
+        "SFP": {"url": "https://www.sfpediatrie.com", "description": "SFP", "recherche": "https://www.sfpediatrie.com/?s="},
+        "AAP": {"url": "https://www.aap.org", "description": "AAP", "recherche": "https://www.aap.org/search?q="}
     }
 }
 
@@ -136,7 +137,7 @@ def traduire_texte(texte, mode="gemini"):
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
-        prompt = f"""Traduis en français. UNE SEULE traduction.
+        prompt = f"""Traduis en français professionnel. UNE SEULE traduction.
 
 {texte}"""
         
@@ -148,96 +149,182 @@ def traduire_texte(texte, mode="gemini"):
     except:
         return texte
 
-def get_pdf_link_ameliore(pmid):
+def get_pdf_links_multiples(pmid):
+    """Récupère TOUTES les URLs possibles pour un PMID"""
     try:
-        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
-        params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "xml"}
-        response = requests.get(base_url, params=params, timeout=10)
-        
-        urls = []
+        urls_possibles = []
         pmc_id = None
         
-        if response.status_code == 200:
-            root = ET.fromstring(response.content)
-            pmc_elem = root.find('.//Link/Id')
-            if pmc_elem is not None:
-                pmc_id = pmc_elem.text
-                urls.extend([
-                    f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
-                    f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render"
-                ])
-        return urls, pmc_id
-    except:
-        return None, None
+        # Méthode 1 : elink vers PMC
+        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+        params = {"dbfrom": "pubmed", "db": "pmc", "id": pmid, "retmode": "xml", "linkname": "pubmed_pmc"}
+        
+        try:
+            response = requests.get(base_url, params=params, timeout=10)
+            if response.status_code == 200:
+                root = ET.fromstring(response.content)
+                pmc_elem = root.find('.//Link/Id')
+                if pmc_elem is not None:
+                    pmc_id = pmc_elem.text
+                    urls_possibles.extend([
+                        f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
+                        f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/main.pdf",
+                        f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render",
+                        f"https://europepmc.org/backend/ptpmcrender.fcgi?accid=PMC{pmc_id}&blobtype=pdf",
+                        f"https://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{pmc_id[:2]}/{pmc_id[:4]}/PMC{pmc_id}.pdf"
+                    ])
+        except:
+            pass
+        
+        # Méthode 2 : efetch pour chercher DOI
+        try:
+            fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+            fetch_params = {"db": "pubmed", "id": pmid, "retmode": "xml"}
+            fetch_response = requests.get(fetch_url, params=fetch_params, timeout=10)
+            
+            if fetch_response.status_code == 200:
+                fetch_root = ET.fromstring(fetch_response.content)
+                
+                # DOI
+                doi_elem = fetch_root.find('.//ArticleId[@IdType="doi"]')
+                if doi_elem is not None:
+                    doi = doi_elem.text
+                    urls_possibles.append(f"https://doi.org/{doi}")
+                
+                # PMC si non trouvé avant
+                if not pmc_id:
+                    pmc_elem = fetch_root.find('.//ArticleId[@IdType="pmc"]')
+                    if pmc_elem is not None:
+                        pmc_id = pmc_elem.text.replace("PMC", "")
+                        urls_possibles.extend([
+                            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/",
+                            f"https://europepmc.org/articles/PMC{pmc_id}?pdf=render"
+                        ])
+        except:
+            pass
+        
+        return urls_possibles, pmc_id
+        
+    except Exception as e:
+        return [], None
 
 def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callback=None):
+    """Version ULTRA ROBUSTE avec multiples tentatives"""
     try:
-        urls, pmc_id = get_pdf_link_ameliore(pmid)
-        if not urls:
-            return None, "PDF non disponible"
+        urls_possibles, pmc_id = get_pdf_links_multiples(pmid)
+        
+        if not urls_possibles:
+            return None, "PDF non disponible en libre accès sur PubMed Central"
         
         if progress_callback:
-            progress_callback(f"📥 Téléchargement {pmid}...")
+            progress_callback(f"📥 Recherche PDF pour PMID {pmid}...")
         
         pdf_content = None
+        url_reussie = None
+        
+        # Multiples User-Agents
         headers_list = [
-            {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0', 'Accept': 'application/pdf'},
-            {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Accept': 'application/pdf'}
+            {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/pdf,*/*'},
+            {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Accept': 'application/pdf'},
+            {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36', 'Accept': 'application/pdf'},
+            {'User-Agent': 'Academic Research Tool 1.0', 'Accept': 'application/pdf'},
         ]
         
-        for url in urls:
-            for headers in headers_list:
-                try:
-                    resp = requests.get(url, timeout=30, allow_redirects=True, headers=headers)
-                    if resp.status_code == 200 and (b'%PDF' in resp.content[:4] or 'pdf' in resp.headers.get('Content-Type', '')):
-                        pdf_content = resp.content
-                        break
-                except:
-                    continue
+        # Essayer CHAQUE URL avec CHAQUE header
+        for url in urls_possibles:
             if pdf_content:
                 break
-            time.sleep(0.5)
+                
+            for headers in headers_list:
+                try:
+                    response = requests.get(
+                        url, 
+                        timeout=30, 
+                        allow_redirects=True, 
+                        headers=headers,
+                        verify=True,
+                        stream=True
+                    )
+                    
+                    if response.status_code == 200:
+                        # Vérifier si c'est un PDF
+                        content_type = response.headers.get('Content-Type', '').lower()
+                        
+                        # Lire le début du contenu
+                        content_start = response.content[:10]
+                        
+                        # Vérifier signature PDF
+                        if b'%PDF' in content_start or 'application/pdf' in content_type:
+                            pdf_content = response.content
+                            url_reussie = url
+                            break
+                
+                except Exception as e:
+                    continue
+                
+                # Petite pause entre tentatives
+                time.sleep(0.3)
         
         if not pdf_content:
-            return None, f"PDF non accessible"
+            if pmc_id:
+                return None, f"PDF non accessible (PMC{pmc_id}). Abonnement institutionnel peut être nécessaire."
+            else:
+                return None, "PDF non disponible en libre accès."
         
         if progress_callback:
-            progress_callback("📄 Extraction...")
+            progress_callback(f"📄 Extraction du texte ({len(pdf_content)} bytes)...")
         
         try:
             pdf_file = BytesIO(pdf_content)
             pdf_reader = pypdf.PdfReader(pdf_file)
-            texte = ""
-            for i in range(min(len(pdf_reader.pages), 15)):
+            
+            texte_complet = ""
+            nb_pages = len(pdf_reader.pages)
+            max_pages = min(nb_pages, 15)
+            
+            for i in range(max_pages):
                 try:
-                    texte += pdf_reader.pages[i].extract_text() + "\n\n"
+                    texte_page = pdf_reader.pages[i].extract_text()
+                    if texte_page:
+                        texte_complet += texte_page + "\n\n"
                 except:
                     continue
             
-            if len(texte) < 100:
-                return None, "Contenu insuffisant"
+            if len(texte_complet) < 100:
+                return None, "Contenu PDF insuffisant (texte non extractible)"
             
-            if len(texte) > 12000:
-                texte = texte[:12000]
+            if len(texte_complet) > 12000:
+                texte_complet = texte_complet[:12000] + "\n\n[PDF tronqué]"
             
             if progress_callback:
-                progress_callback("🌐 Traduction...")
+                progress_callback(f"🌐 Traduction en cours...")
             
-            texte_trad = ""
-            for i in range(0, len(texte), 4000):
-                texte_trad += traduire_texte(texte[i:i+4000], mode=mode_traduction) + "\n\n"
+            # Traduire par chunks
+            chunk_size = 4000
+            texte_traduit = ""
             
-            return texte_trad, None
+            for i in range(0, len(texte_complet), chunk_size):
+                chunk = texte_complet[i:i+chunk_size]
+                trad_chunk = traduire_texte(chunk, mode=mode_traduction)
+                texte_traduit += trad_chunk + "\n\n"
+                
+                if progress_callback and i > 0:
+                    pct = min(100, int((i/len(texte_complet))*100))
+                    progress_callback(f"🌐 Traduction {pct}%...")
+            
+            return texte_traduit, None
+            
         except Exception as e:
-            return None, f"Erreur: {str(e)}"
-    except:
-        return None, "Erreur"
+            return None, f"Erreur extraction PDF: {str(e)}"
+            
+    except Exception as e:
+        return None, f"Erreur générale: {str(e)}"
 
 def traduire_mots_cles(mots):
     try:
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        response = model.generate_content(f"Traduis en anglais médical: {mots}")
+        response = model.generate_content(f"Traduis en anglais médical pour PubMed: {mots}")
         return response.text.strip()
     except:
         return mots
@@ -271,13 +358,26 @@ def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemi
                 year = article.find('.//PubDate/Year')
                 year = year.text if year is not None else "N/A"
                 
+                month = article.find('.//PubDate/Month')
+                month = month.text if month is not None else ""
+                
+                day = article.find('.//PubDate/Day')
+                day = day.text if day is not None else ""
+                
+                if month and day:
+                    date_pub = f"{day}/{month}/{year}"
+                elif month:
+                    date_pub = f"{month} {year}"
+                else:
+                    date_pub = year
+                
                 articles.append({
                     'pmid': pmid,
                     'title': title,
                     'title_fr': title_fr,
                     'journal': journal,
                     'year': year,
-                    'date_pub': year
+                    'date_pub': date_pub
                 })
             
             return articles
@@ -316,6 +416,8 @@ def generer_pdf_selectionne(spec, periode, articles):
         except:
             title = article['title_fr'].encode('ascii', 'ignore').decode('ascii')
         pdf.multi_cell(0, 5, title)
+        pdf.ln(2)
+        pdf.cell(0, 5, f"{article['journal']} - {article['year']}", 0, 1)
     
     output = io.BytesIO()
     pdf_string = pdf.output(dest='S').encode('latin-1')
@@ -324,7 +426,7 @@ def generer_pdf_selectionne(spec, periode, articles):
     return output.getvalue()
 
 def generer_notebooklm_selectionne(articles):
-    contenu = f"""# VEILLE MEDICALE
+    contenu = f"""# VEILLE MEDICALE - PODCAST
 Date: {datetime.now().strftime("%d/%m/%Y")}
 
 """
@@ -332,10 +434,11 @@ Date: {datetime.now().strftime("%d/%m/%Y")}
         contenu += f"""
 ### Article {i}
 Titre: {article['title_fr']}
-Journal: {article['journal']}
+Journal: {article['journal']} ({article['year']})
 PMID: {article['pmid']}
 
-{article.get('pdf_texte_fr', '')}
+Contenu:
+{article.get('pdf_texte_fr', 'Non disponible')}
 
 ---
 """
@@ -487,7 +590,8 @@ with tab1:
                 selected = st.checkbox("", key=f"select_{i}", label_visibility="collapsed")
             with col_i:
                 st.markdown(f"**{i+1}. {article['title_fr']}**")
-                st.caption(f"📰 {article['journal']} | {article['year']} | PMID: {article['pmid']}")
+                # CORRECTION : Lien cliquable vers PubMed
+                st.markdown(f"📰 {article['journal']} | 📅 {article['date_pub']} | [PMID {article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
             
             if selected:
                 articles_sel.append(article['pmid'])
@@ -500,13 +604,14 @@ with tab1:
                 st.session_state.analyses_individuelles = {}
                 
                 for idx, pmid in enumerate(articles_sel):
-                    st.subheader(f"📄 Article {idx+1}/{len(articles_sel)} - {pmid}")
+                    st.subheader(f"📄 Article {idx+1}/{len(articles_sel)}")
                     
                     article_info = next((a for a in st.session_state.articles_previsualises if a['pmid'] == pmid), None)
                     if not article_info:
                         continue
                     
                     st.markdown(f"**{article_info['title_fr']}**")
+                    st.markdown(f"[🔗 Voir sur PubMed](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
                     
                     status = st.empty()
                     
@@ -530,7 +635,6 @@ with tab1:
                                 prompt = f"""Analyse médicale.
 
 Titre: {article_info['title_fr']}
-Journal: {article_info['journal']}
 
 {pdf_texte}
 
@@ -551,6 +655,7 @@ Analyse:
                                     'title_fr': article_info['title_fr'],
                                     'journal': article_info['journal'],
                                     'year': article_info['year'],
+                                    'date_pub': article_info['date_pub'],
                                     'pdf_texte_fr': pdf_texte,
                                     'analyse_ia': analyse
                                 }
@@ -558,6 +663,7 @@ Analyse:
                                 st.error(f"Erreur: {str(e)}")
                     else:
                         st.error(f"❌ {erreur}")
+                        st.info(f"💡 [Accès direct PubMed](https://pubmed.ncbi.nlm.nih.gov/{pmid}/)")
                     
                     st.divider()
                 
@@ -576,7 +682,7 @@ Analyse:
                 include = st.checkbox("", key=f"final_{pmid}", value=True, label_visibility="collapsed")
             with col_i:
                 st.markdown(f"**{data['title_fr']}**")
-                st.caption(f"{data['journal']} | {data['year']}")
+                st.caption(f"{data['journal']} | {data['date_pub']}")
                 with st.expander("🤖 Analyse"):
                     st.markdown(data['analyse_ia'])
             
@@ -608,32 +714,61 @@ Analyse:
                 st.rerun()
     
     elif st.session_state.mode_etape == 4:
-        st.header("🎉 Terminé!")
+        st.header("🎉 Veille terminée!")
         
-        st.success(f"✅ {len(st.session_state.fichiers_finaux['articles'])} article(s)")
+        st.success(f"✅ {len(st.session_state.fichiers_finaux['articles'])} article(s) analysé(s)")
         
+        # RÉCAPITULATIF
+        st.subheader("📋 Articles analysés")
+        for i, article in enumerate(st.session_state.fichiers_finaux['articles'], 1):
+            with st.expander(f"📄 Article {i} - {article['title_fr'][:60]}..."):
+                st.markdown(f"**Journal:** {article['journal']} ({article['year']})")
+                st.markdown(f"**PMID:** [{article['pmid']}](https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/)")
+                st.markdown("### 🤖 Analyse")
+                st.markdown(article['analyse_ia'])
+        
+        st.divider()
         st.subheader("📥 Téléchargements")
         
+        # CORRECTION : Afficher les fichiers comme text au lieu de download pour éviter bug mobile
         col1, col2 = st.columns(2)
+        
         with col1:
             st.download_button(
-                "📄 PDF",
+                "📄 Télécharger PDF",
                 st.session_state.fichiers_finaux['pdf'],
                 f"veille_{datetime.now().strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                use_container_width=True,
+                key="dl_pdf"
             )
+        
         with col2:
+            # AFFICHER le contenu NotebookLM directement
+            with st.expander("📋 Voir le contenu NotebookLM"):
+                st.text_area(
+                    "Copier ce texte et le coller dans NotebookLM:",
+                    st.session_state.fichiers_finaux['notebooklm'],
+                    height=400,
+                    key="notebooklm_display"
+                )
+            
+            # Bouton de téléchargement en plus
             st.download_button(
-                "🎙️ NotebookLM",
+                "💾 Télécharger fichier NotebookLM",
                 st.session_state.fichiers_finaux['notebooklm'],
                 f"podcast_{datetime.now().strftime('%Y%m%d')}.txt",
-                use_container_width=True
+                use_container_width=True,
+                key="dl_notebooklm"
             )
         
-        st.link_button("🔗 NotebookLM", "https://notebooklm.google.com", use_container_width=True)
+        st.divider()
         
-        if st.button("🔄 Nouvelle", use_container_width=True):
+        st.info("💡 **Sur mobile** : Copier le texte NotebookLM ci-dessus et le coller directement dans NotebookLM.google.com")
+        
+        st.link_button("🔗 Ouvrir NotebookLM", "https://notebooklm.google.com", use_container_width=True)
+        
+        if st.button("🔄 Nouvelle recherche", use_container_width=True, key="nouvelle_rech"):
             st.session_state.mode_etape = 1
             st.session_state.articles_previsualises = []
             st.session_state.analyses_individuelles = {}
@@ -641,23 +776,44 @@ Analyse:
             st.rerun()
 
 with tab2:
-    st.header("🔗 Sources")
+    st.header("🔗 Sources complémentaires")
     
     spec_src = st.selectbox("Spécialité:", list(SOURCES_PAR_SPECIALITE.keys()))
+    
+    st.markdown(f"### {len(SOURCES_PAR_SPECIALITE[spec_src])} sources pour {spec_src}")
     
     for nom, info in SOURCES_PAR_SPECIALITE[spec_src].items():
         with st.expander(f"📚 {nom}"):
             st.markdown(f"**{info['description']}**")
+            st.link_button("🏠 Accueil", info['url'])
+            
             mots = st.text_input("Rechercher:", key=f"src_{nom}")
-            col1, col2 = st.columns(2)
-            with col1:
-                if mots:
-                    st.link_button("🔍", f"{info['recherche']}{mots}")
-            with col2:
-                st.link_button("🏠", info['url'])
+            if mots:
+                st.link_button("🔍 Rechercher", f"{info['recherche']}{mots}")
 
 with tab3:
-    st.header("⚙️ Config")
-    st.info("DeepL Pro+ : 29,99€/mois")
+    st.header("⚙️ Configuration")
+    
+    st.markdown("""
+## 🌐 DeepL Pro+
 
-st.caption("💊 Gemini 2.0 Flash")
+**Prix:** 29,99€/mois  
+**Caractères:** 1 million/mois
+
+### Installation
+1. https://www.deepl.com/pro#developer
+2. S'abonner à API Pro+
+3. Copier la clé API
+4. Settings → Secrets → `DEEPL_KEY`
+
+### Résiliation
+Account → Subscription → Cancel  
+✅ Aucun engagement
+    """)
+    
+    if DEEPL_KEY:
+        st.success("✅ DeepL configuré")
+    else:
+        st.info("ℹ️ Gemini 2.0 Flash actif (gratuit)")
+
+st.caption("💊 Veille médicale | Gemini 2.0 Flash")
