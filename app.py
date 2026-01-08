@@ -44,7 +44,7 @@ TYPES_ETUDE = {
     "Études cas-témoins": "Case-Control Studies"
 }
 
-# NOUVEAU : Paramètres de langue
+# Paramètres de langue
 LANGUES = {
     "Toutes les langues": "",
     "Français uniquement": "fre",
@@ -145,7 +145,10 @@ def nettoyer_titre(titre):
     return titre.strip()
 
 def traduire_texte(texte, mode="gemini"):
-    """Traduit - UNE SEULE traduction - CORRECTION GEMINI"""
+    """
+    Traduit avec prompt engineering optimisé
+    AMÉLIORATION: Prompt plus structuré pour éviter les artefacts
+    """
     if not texte or len(texte.strip()) < 3:
         return texte
     
@@ -154,35 +157,32 @@ def traduire_texte(texte, mode="gemini"):
         if trad:
             return nettoyer_titre(trad)
     
-    # CORRECTION : Utiliser gemini-2.0-flash-exp (pas "Gémaux")
     try:
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
-        prompt = f"""Traduis ce texte médical en français professionnel.
+        # NOUVEAU PROMPT OPTIMISÉ
+        prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
 
-RÈGLES STRICTES:
-- Donne UNE SEULE traduction
-- Pas de numérotation (1., 2., etc.)
-- Pas d'options multiples
-- Pas de "Traduction:" dans la réponse
-- Juste la traduction directe
+CONSIGNES STRICTES:
+- Fournis UNIQUEMENT la traduction française
+- Pas de préambule (pas de "Traduction:", "Voici", etc.)
+- Pas de numérotation ou options multiples
+- Conserve la terminologie médicale exacte
+- Pas de formatage markdown (**, #, etc.)
 
-Texte à traduire:
-{texte}"""
+TEXTE À TRADUIRE:
+{texte}
+
+TRADUCTION FRANÇAISE:"""
         
         response = model.generate_content(prompt)
         traduction = response.text.strip()
         
-        # Nettoyer la réponse
+        # Nettoyage post-traduction
         traduction = traduction.replace("**", "")
-        traduction = traduction.replace("Traduction:", "")
-        traduction = traduction.replace("Traduction :", "")
-        
-        # Supprimer numérotation au début
+        traduction = re.sub(r'^(Traduction\s*:?\s*)', '', traduction, flags=re.IGNORECASE)
         traduction = re.sub(r'^\d+[\.\)]\s*', '', traduction)
-        
-        # Nettoyer les artefacts
         traduction = nettoyer_titre(traduction)
         
         return traduction
@@ -190,136 +190,218 @@ Texte à traduire:
         st.warning(f"Erreur traduction: {str(e)}")
         return texte
 
-def get_pdf_link_v2(pmid):
-    """VERSION AMÉLIORÉE - Récupère le lien PDF avec plusieurs méthodes"""
+def get_doi_from_pubmed(pmid):
+    """Récupère le DOI depuis PubMed"""
     try:
-        # MÉTHODE 1 : Via elink vers PMC
-        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
         params = {
-            "dbfrom": "pubmed",
-            "db": "pmc",
+            "db": "pubmed",
             "id": pmid,
-            "retmode": "xml",
-            "linkname": "pubmed_pmc"
+            "retmode": "xml"
         }
         
         response = requests.get(base_url, params=params, timeout=10)
-        
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            pmc_id = root.find('.//Link/Id')
             
-            if pmc_id is not None:
-                pmc_id_text = pmc_id.text
-                
-                # Essayer plusieurs URLs possibles
-                urls_possibles = [
-                    f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id_text}/pdf/",
-                    f"https://europepmc.org/articles/PMC{pmc_id_text}?pdf=render",
-                    f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id_text}/pdf/{pmc_id_text}.pdf"
-                ]
-                
-                return urls_possibles, pmc_id_text
+            # Chercher le DOI dans ArticleIdList
+            for article_id in root.findall('.//ArticleId'):
+                if article_id.get('IdType') == 'doi':
+                    return article_id.text
         
-        return None, None
+        return None
     except Exception as e:
-        return None, None
+        return None
 
-def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callback=None):
-    """Télécharge et extrait PDF - VERSION CORRIGÉE avec meilleure gestion 403"""
+def get_pdf_url_unpaywall(doi, email="votre-email@domaine.fr"):
+    """
+    NOUVELLE MÉTHODE: Utilise l'API Unpaywall (gratuite et fiable)
+    Plus robuste que la construction manuelle d'URLs PMC
+    """
+    if not doi:
+        return None, "Pas de DOI disponible"
+    
     try:
-        urls_possibles, pmc_id = get_pdf_link_v2(pmid)
+        # API Unpaywall - GRATUITE et très fiable
+        url = f"https://api.unpaywall.org/v2/{doi}"
+        params = {"email": email}
         
-        if not urls_possibles:
-            return None, "PDF non disponible en libre accès sur PubMed Central"
+        response = requests.get(url, params=params, timeout=10)
         
-        if progress_callback:
-            progress_callback(f"📥 Recherche PDF pour PMID {pmid}...")
-        
-        # Essayer chaque URL
-        pdf_content = None
-        url_utilisee = None
-        
-        # Headers pour contourner certains blocages
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/pdf,text/html',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-        
-        for url in urls_possibles:
-            try:
-                response = requests.get(url, timeout=30, allow_redirects=True, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Chercher le meilleur lien PDF disponible
+            if data.get('is_oa'):  # Open Access
+                best_oa = data.get('best_oa_location')
+                if best_oa and best_oa.get('url_for_pdf'):
+                    return best_oa['url_for_pdf'], None
                 
-                if response.status_code == 200 and 'application/pdf' in response.headers.get('Content-Type', ''):
-                    pdf_content = response.content
-                    url_utilisee = url
-                    break
+                # Sinon, chercher dans tous les emplacements
+                for location in data.get('oa_locations', []):
+                    pdf_url = location.get('url_for_pdf')
+                    if pdf_url:
+                        return pdf_url, None
+            
+            return None, "Article payant (pas d'accès libre)"
+        
+        return None, f"Erreur API Unpaywall (code {response.status_code})"
+        
+    except Exception as e:
+        return None, f"Erreur Unpaywall: {str(e)}"
+
+def extraire_texte_pdf_ameliore(pdf_content):
+    """
+    AMÉLIORATION: Essaie pdfplumber d'abord, puis pypdf en fallback
+    pdfplumber est meilleur pour les PDFs médicaux multi-colonnes
+    """
+    texte_complet = ""
+    
+    # Méthode 1: Essayer pdfplumber (meilleur pour texte structuré)
+    try:
+        import pdfplumber
+        
+        pdf_file = BytesIO(pdf_content)
+        with pdfplumber.open(pdf_file) as pdf:
+            nb_pages = min(len(pdf.pages), 15)
+            
+            for i in range(nb_pages):
+                try:
+                    page = pdf.pages[i]
+                    texte_page = page.extract_text()
+                    if texte_page:
+                        texte_complet += texte_page + "\n\n"
+                except:
+                    continue
+        
+        if len(texte_complet) > 100:
+            return texte_complet, "pdfplumber"
+    
+    except ImportError:
+        # pdfplumber n'est pas installé
+        pass
+    except Exception as e:
+        # Erreur avec pdfplumber, on passe à pypdf
+        pass
+    
+    # Méthode 2: Fallback sur pypdf
+    try:
+        pdf_file = BytesIO(pdf_content)
+        pdf_reader = pypdf.PdfReader(pdf_file)
+        
+        texte_complet = ""
+        nb_pages = min(len(pdf_reader.pages), 15)
+        
+        for i in range(nb_pages):
+            try:
+                texte_page = pdf_reader.pages[i].extract_text()
+                texte_complet += texte_page + "\n\n"
             except:
                 continue
         
-        if not pdf_content:
-            return None, f"PDF non accessible (PMC{pmc_id}). Cet article nécessite probablement un abonnement institutionnel."
+        if len(texte_complet) > 100:
+            return texte_complet, "pypdf"
+    
+    except Exception as e:
+        return "", f"Erreur extraction: {str(e)}"
+    
+    return texte_complet, "extraction_partielle"
+
+def telecharger_et_extraire_pdf(pmid, mode_traduction="gemini", progress_callback=None):
+    """
+    VERSION OPTIMISÉE avec Unpaywall + pdfplumber
+    """
+    try:
+        if progress_callback:
+            progress_callback(f"🔍 Recherche du DOI pour PMID {pmid}...")
+        
+        # Étape 1: Récupérer le DOI
+        doi = get_doi_from_pubmed(pmid)
+        
+        if not doi:
+            return None, "DOI non trouvé pour cet article"
         
         if progress_callback:
-            progress_callback(f"📄 Extraction du texte...")
+            progress_callback(f"📥 Recherche PDF via Unpaywall (DOI: {doi})...")
         
-        try:
-            pdf_file = BytesIO(pdf_content)
-            pdf_reader = pypdf.PdfReader(pdf_file)
+        # Étape 2: Chercher le PDF via Unpaywall
+        pdf_url, erreur = get_pdf_url_unpaywall(doi)
+        
+        if erreur or not pdf_url:
+            return None, erreur or "PDF non disponible en libre accès"
+        
+        if progress_callback:
+            progress_callback(f"⬇️ Téléchargement du PDF...")
+        
+        # Étape 3: Télécharger le PDF
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        response = requests.get(pdf_url, timeout=30, headers=headers)
+        
+        if response.status_code != 200 or 'application/pdf' not in response.headers.get('Content-Type', ''):
+            return None, f"Impossible de télécharger le PDF (HTTP {response.status_code})"
+        
+        pdf_content = response.content
+        
+        if progress_callback:
+            progress_callback(f"📄 Extraction du texte (méthode optimisée)...")
+        
+        # Étape 4: Extraire le texte (méthode améliorée)
+        texte_complet, methode = extraire_texte_pdf_ameliore(pdf_content)
+        
+        if len(texte_complet) < 100:
+            return None, f"Contenu PDF insuffisant (méthode: {methode})"
+        
+        # Tronquer si trop long
+        if len(texte_complet) > 12000:
+            texte_complet = texte_complet[:12000] + "\n\n[PDF tronqué pour analyse]"
+        
+        if progress_callback:
+            progress_callback(f"🌐 Traduction en cours ({len(texte_complet)} caractères)...")
+        
+        # Étape 5: Traduire par chunks avec prompt optimisé
+        chunk_size = 4000
+        texte_traduit = ""
+        
+        for i in range(0, len(texte_complet), chunk_size):
+            chunk = texte_complet[i:i+chunk_size]
+            trad_chunk = traduire_texte(chunk, mode=mode_traduction)
+            texte_traduit += trad_chunk + "\n\n"
             
-            texte_complet = ""
-            nb_pages = len(pdf_reader.pages)
-            max_pages = min(nb_pages, 15)
-            
-            for i in range(max_pages):
-                try:
-                    texte_page = pdf_reader.pages[i].extract_text()
-                    texte_complet += texte_page + "\n\n"
-                except:
-                    continue
-            
-            if len(texte_complet) < 100:
-                return None, "Contenu PDF insuffisant (impossible à extraire)"
-            
-            if len(texte_complet) > 12000:
-                texte_complet = texte_complet[:12000] + "\n\n[PDF tronqué pour analyse]"
-            
-            if progress_callback:
-                progress_callback(f"🌐 Traduction en cours...")
-            
-            # Traduire par chunks
-            chunk_size = 4000
-            texte_traduit = ""
-            
-            for i in range(0, len(texte_complet), chunk_size):
-                chunk = texte_complet[i:i+chunk_size]
-                trad_chunk = traduire_texte(chunk, mode=mode_traduction)
-                texte_traduit += trad_chunk + "\n\n"
-                
-                if progress_callback and i > 0:
-                    progress_callback(f"🌐 Traduction... {min(100, int((i/len(texte_complet))*100))}%")
-            
-            return texte_traduit, None
-            
-        except Exception as e:
-            return None, f"Erreur lors de l'extraction du PDF: {str(e)}"
-            
+            if progress_callback and i > 0:
+                pct = min(100, int((i/len(texte_complet))*100))
+                progress_callback(f"🌐 Traduction... {pct}%")
+        
+        if progress_callback:
+            progress_callback(f"✅ Extraction réussie (méthode: {methode})")
+        
+        return texte_traduit, None
+        
     except Exception as e:
-        return None, f"Erreur: {str(e)}"
+        return None, f"Erreur générale: {str(e)}"
 
 def traduire_mots_cles(mots_cles_fr):
-    """Traduit mots-clés"""
+    """
+    Traduit mots-clés avec prompt optimisé
+    """
     try:
         genai.configure(api_key=G_KEY)
         model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
-        prompt = f"""Traduis ces mots-clés médicaux en anglais pour une recherche PubMed.
-Donne UNIQUEMENT les termes anglais, sans explication.
+        prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
 
-Mots-clés français: {mots_cles_fr}
+CONSIGNES:
+- Fournis UNIQUEMENT les termes anglais
+- Pas d'explication ou préambule
+- Utilise la terminologie MeSH quand possible
+- Sépare les termes par des virgules
 
-Termes anglais:"""
+MOTS-CLÉS FRANÇAIS:
+{mots_cles_fr}
+
+TERMES ANGLAIS:"""
         
         response = model.generate_content(prompt)
         return response.text.strip()
@@ -327,7 +409,7 @@ Termes anglais:"""
         return mots_cles_fr
 
 def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemini"):
-    """Récupère titres - CORRECTION: Traduire TOUS les titres"""
+    """Récupère titres avec nettoyage optimal"""
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml", "rettype": "abstract"}
     
@@ -340,10 +422,9 @@ def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemi
             for article in root.findall('.//PubmedArticle'):
                 pmid = article.find('.//PMID').text if article.find('.//PMID') is not None else "N/A"
                 
-                # Extraire le titre avec toutes les parties (texte et sous-éléments)
+                # Extraire le titre avec toutes les parties
                 title_elem = article.find('.//ArticleTitle')
                 if title_elem is not None:
-                    # Récupérer TOUT le texte, y compris dans les sous-éléments
                     title = ''.join(title_elem.itertext())
                 else:
                     title = "Titre non disponible"
@@ -351,7 +432,7 @@ def recuperer_titres_rapides(pmids, traduire_titres=False, mode_traduction="gemi
                 # Nettoyer AVANT traduction
                 title = nettoyer_titre(title)
                 
-                # CORRECTION: Traduire TOUS les titres si demandé
+                # Traduire si demandé
                 if traduire_titres and title != "Titre non disponible":
                     title_fr = traduire_texte(title, mode=mode_traduction)
                     title_fr = nettoyer_titre(title_fr)
@@ -482,12 +563,22 @@ Contenu complet:
 # Interface
 st.title("🩺 Veille Médicale Professionnelle")
 
+# Afficher info sur les améliorations
+with st.expander("ℹ️ Nouvelles fonctionnalités"):
+    st.markdown("""
+    **Améliorations v2:**
+    - 🔗 **Unpaywall API** : Détection automatique des PDF en libre accès
+    - 📄 **Extraction optimisée** : Meilleure gestion des PDFs multi-colonnes
+    - 🌐 **Traduction améliorée** : Prompts optimisés pour réduire les artefacts
+    - 🌍 **Filtre de langue** : Recherche en français ou anglais uniquement
+    """)
+
 if DEEPL_KEY:
     st.success("✅ DeepL Pro+ activé")
 else:
     st.info("ℹ️ Traduction : Gemini 2.0 Flash")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources", "⚙️ DeepL"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔍 Recherche", "📚 Historique", "🔗 Sources", "⚙️ Configuration"])
 
 with tab1:
     if st.session_state.mode_etape == 1:
@@ -591,7 +682,7 @@ with tab1:
             
             st.subheader("🔬 Filtres")
             
-            # NOUVEAU : Filtre de langue
+            # Filtre de langue
             st.markdown("**🌍 Langue des articles**")
             langue_selectionnee = st.selectbox(
                 "Langue:",
@@ -644,7 +735,7 @@ with tab1:
             date_fin_pubmed = date_fin.strftime("%Y/%m/%d")
             query_parts.append(f"{date_debut_pubmed}:{date_fin_pubmed}[pdat]")
             
-            # NOUVEAU : Ajout du filtre de langue
+            # Ajout du filtre de langue
             code_langue = LANGUES[langue_selectionnee]
             if code_langue:
                 query_parts.append(f"{code_langue}[la]")
@@ -700,7 +791,7 @@ with tab1:
                     'mode_contenu': mode_contenu,
                     'mode_traduction': mode_trad,
                     'requete': query,
-                    'langue': langue_selectionnee  # NOUVEAU : Stocker la langue
+                    'langue': langue_selectionnee
                 }
                 
                 st.session_state.mode_etape = 2
@@ -718,7 +809,7 @@ with tab1:
                 st.rerun()
             st.stop()
         
-        # MODIFIÉ : Afficher aussi la langue
+        # Afficher info recherche avec langue
         info_affichage = f"**{st.session_state.info_recherche['display_term']}** | {st.session_state.info_recherche['periode']}"
         if st.session_state.info_recherche.get('langue'):
             info_affichage += f" | 🌍 {st.session_state.info_recherche['langue']}"
@@ -803,22 +894,24 @@ with tab1:
                                 genai.configure(api_key=G_KEY)
                                 model = genai.GenerativeModel('gemini-2.0-flash-exp')
                                 
-                                prompt = f"""Analyse médicale approfondie.
+                                # Prompt optimisé pour l'analyse
+                                prompt = f"""Tu es un médecin expert. Analyse cet article médical en français de manière structurée et professionnelle.
 
+ARTICLE:
 Titre: {article_info['title_fr']}
 Journal: {article_info['journal']} ({article_info['year']})
 
-Contenu:
+CONTENU COMPLET:
 {pdf_texte_fr}
 
-Analyse en français:
+CONSIGNES D'ANALYSE:
+- Rédige une analyse médicale professionnelle en français
+- Structure obligatoire: Objectif, Méthodologie, Résultats, Implications cliniques, Limites, Conclusion
+- Sois précis et concis
+- Utilise la terminologie médicale française appropriée
+- Ne commence pas par "Analyse:" ou tout autre préambule
 
-## Objectif
-## Méthodologie
-## Résultats
-## Implications
-## Limites
-## Conclusion"""
+ANALYSE STRUCTURÉE:"""
                                 
                                 response = model.generate_content(prompt)
                                 analyse = response.text
@@ -908,6 +1001,7 @@ Analyse en français:
 
 with tab2:
     st.header("📚 Historique")
+    st.info("Fonctionnalité à venir : Sauvegarde des recherches précédentes")
 
 with tab3:
     st.header("🔗 Sources")
@@ -928,20 +1022,41 @@ with tab3:
                     st.link_button("🏠 Accueil", info['url'])
 
 with tab4:
-    st.header("⚙️ DeepL")
+    st.header("⚙️ Configuration")
     
+    st.subheader("📄 Extraction PDF")
     st.markdown("""
-## DeepL Pro+
-
-1. https://www.deepl.com/pro#developer
-2. API Pro+ (29,99€/mois)
-3. Settings → Secrets:
-```toml
-DEEPL_KEY = "votre-clé"
-```
-
-Résiliation facile: Account → Cancel
+    **Méthodes utilisées (par ordre de priorité):**
+    1. **pdfplumber** (recommandé) : Meilleure extraction pour PDFs structurés
+    2. **pypdf** (fallback) : Compatible mais moins précis
+    
+    Pour installer pdfplumber :
+    ```bash
+    pip install pdfplumber
+    ```
+    """)
+    
+    st.subheader("🔗 API Unpaywall")
+    st.markdown("""
+    **API Unpaywall** (gratuite) :
+    - Détection automatique des PDFs en libre accès
+    - Plus fiable que la construction manuelle d'URLs PMC
+    - Aucune clé API requise
+    - Taux de réussite : ~40-60% des articles récents
+    """)
+    
+    st.subheader("🌐 DeepL Pro+")
+    st.markdown("""
+    **Configuration DeepL** (optionnel):
+    1. https://www.deepl.com/pro#developer
+    2. Abonnement API Pro+ (29,99€/mois)
+    3. Settings → Secrets :
+    ```toml
+    DEEPL_KEY = "votre-clé"
+    ```
+    
+    Sans DeepL, le système utilise Gemini 2.0 Flash (gratuit).
     """)
 
 st.markdown("---")
-st.caption("💊 Veille médicale | Gemini 2.0 Flash")
+st.caption("💊 Veille médicale v2.0 | Gemini 2.0 Flash + Unpaywall API")
