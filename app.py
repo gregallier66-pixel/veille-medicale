@@ -44,6 +44,13 @@ TYPES_ETUDE = {
     "Études cas-témoins": "Case-Control Studies"
 }
 
+# NOUVEAU : Paramètres de langue
+LANGUES = {
+    "Toutes les langues": "",
+    "Français uniquement": "fre",
+    "Anglais uniquement": "eng"
+}
+
 JOURNAUX_SPECIALITE = {
     "Gynécologie": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Hum Reprod", "Fertil Steril"],
     "Obstétrique": ["BJOG", "Obstet Gynecol", "Am J Obstet Gynecol", "Ultrasound Obstet Gynecol"],
@@ -584,6 +591,14 @@ with tab1:
             
             st.subheader("🔬 Filtres")
             
+            # NOUVEAU : Filtre de langue
+            st.markdown("**🌍 Langue des articles**")
+            langue_selectionnee = st.selectbox(
+                "Langue:",
+                list(LANGUES.keys()),
+                label_visibility="collapsed"
+            )
+            
             mode_contenu = st.radio(
                 "Type:",
                 ["PDF complets uniquement", "Titre + résumé", "Titre uniquement"]
@@ -628,6 +643,11 @@ with tab1:
             date_debut_pubmed = date_debut.strftime("%Y/%m/%d")
             date_fin_pubmed = date_fin.strftime("%Y/%m/%d")
             query_parts.append(f"{date_debut_pubmed}:{date_fin_pubmed}[pdat]")
+            
+            # NOUVEAU : Ajout du filtre de langue
+            code_langue = LANGUES[langue_selectionnee]
+            if code_langue:
+                query_parts.append(f"{code_langue}[la]")
             
             if "PDF complets" in mode_contenu:
                 query_parts.append("free full text[sb]")
@@ -679,7 +699,8 @@ with tab1:
                     'spec': spec_utilisee,
                     'mode_contenu': mode_contenu,
                     'mode_traduction': mode_trad,
-                    'requete': query
+                    'requete': query,
+                    'langue': langue_selectionnee  # NOUVEAU : Stocker la langue
                 }
                 
                 st.session_state.mode_etape = 2
@@ -697,7 +718,12 @@ with tab1:
                 st.rerun()
             st.stop()
         
-        st.info(f"**{st.session_state.info_recherche['display_term']}** | {st.session_state.info_recherche['periode']}")
+        # MODIFIÉ : Afficher aussi la langue
+        info_affichage = f"**{st.session_state.info_recherche['display_term']}** | {st.session_state.info_recherche['periode']}"
+        if st.session_state.info_recherche.get('langue'):
+            info_affichage += f" | 🌍 {st.session_state.info_recherche['langue']}"
+        
+        st.info(info_affichage)
         
         col_btn1, col_btn2 = st.columns(2)
         
