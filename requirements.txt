@@ -1,6 +1,7 @@
 # ====================================
-# REQUIREMENTS.TXT - VERSION 6
+# REQUIREMENTS.TXT - VERSION 7
 # Veille Médicale Professionnelle
+# Version optimisée avec cache, retry, validation
 # ====================================
 
 # Framework web
@@ -9,8 +10,9 @@ streamlit>=1.28.0
 # IA et traduction
 google-generativeai>=0.3.0
 
-# Requêtes HTTP
+# Requêtes HTTP avec retry
 requests>=2.31.0
+urllib3>=2.0.0
 
 # Traitement PDF
 pypdf>=3.17.0
@@ -18,6 +20,9 @@ pdfplumber>=0.10.0
 
 # Génération PDF
 fpdf>=1.7.2
+
+# Validation de données
+pydantic>=2.0.0
 
 # Manipulation de données
 python-dateutil>=2.8.2
@@ -33,3 +38,28 @@ python-dateutil>=2.8.2
 # re - Inclus
 # time - Inclus
 # tarfile - Inclus
+# sqlite3 - Inclus
+# hashlib - Inclus
+# logging - Inclus
+# functools - Inclus
+# concurrent.futures - Inclus
+# typing - Inclus
+
+# ====================================
+# NOTES D'INSTALLATION
+# ====================================
+# 
+# Installation standard:
+# pip install -r requirements_v7.txt
+#
+# Pour environnement virtuel:
+# python -m venv venv
+# source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate     # Windows
+# pip install -r requirements_v7.txt
+#
+# Pour Streamlit Cloud:
+# Ce fichier doit être nommé "requirements.txt" 
+# et placé à la racine du projet
+#
+# ====================================
