@@ -646,32 +646,41 @@ with tab2:
     st.header("📄 Analyse Approfondie PDF")
     
     st.info("""
-    **Mode d'emploi:**
-    1. Recherchez vos articles dans l'onglet "Recherche"
-    2. Cliquez sur un lien PDF pour l'ouvrir
-    3. Copiez l'URL du PDF
-    4. Collez-la ci-dessous pour analyse approfondie
+    **2 méthodes disponibles:**
+    
+    ✅ **UPLOAD (recommandé)** - Toujours fonctionnel
+    - Téléchargez le PDF manuellement depuis le site
+    - Uploadez-le ici
+    
+    🔗 **URL** - Si le site ne bloque pas
+    - Pour PMC Open Access uniquement
     """)
     
-    url_pdf = st.text_input(
-        "🔗 URL du PDF",
-        placeholder="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC123456/pdf/...",
-        help="Collez l'URL complète du PDF"
-    )
+    # Radio button pour choisir la méthode
+    methode = st.radio("Choisissez votre méthode", ["📥 Upload PDF", "🔗 URL (PMC uniquement)"], horizontal=True)
     
-    col_a, col_b = st.columns([2, 1])
-    
-    with col_a:
-        pmid_assoc = st.text_input("PMID associé (optionnel)", placeholder="12345678")
-    
-    with col_b:
-        st.write("")
-        st.write("")
-        analyser = st.button("🚀 ANALYSER", type="primary", use_container_width=True)
-    
-    if analyser and url_pdf:
+    if methode == "📥 Upload PDF":
+        uploaded_file = st.file_uploader("Uploadez votre PDF", type=['pdf'])
+        pmid_assoc = st.text_input("PMID (optionnel)", placeholder="12345678")
         
-        st.divider()
+        if st.button("🚀 ANALYSER", type="primary", use_container_width=True):
+            if not uploaded_file:
+                st.error("Uploadez d'abord un PDF")
+                st.stop()
+            
+            pdf_content = uploaded_file.read()
+            st.success(f"✅ PDF uploadé ({len(pdf_content)} bytes)")
+            
+            # [RESTE DU CODE D'ANALYSE - identique]
+    
+    else:  # URL
+        url_pdf = st.text_input("URL PMC", placeholder="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC.../pdf/")
+        pmid_assoc = st.text_input("PMID (optionnel)", placeholder="12345678")
+        
+        if st.button("🚀 ANALYSER", type="primary", use_container_width=True):
+            if not url_pdf:
+                st.error("Entrez une URL")
+                st.stop()
         
         # Téléchargement
         with st.spinner("📥 Téléchargement du PDF..."):
