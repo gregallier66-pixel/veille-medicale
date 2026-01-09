@@ -1,22 +1,35 @@
-# Streamlit
+# ====================================
+# REQUIREMENTS.TXT - VERSION 6
+# Veille Médicale Professionnelle
+# ====================================
+
+# Framework web
 streamlit>=1.28.0
 
-# Google Gemini AI
+# IA et traduction
 google-generativeai>=0.3.0
 
 # Requêtes HTTP
 requests>=2.31.0
 
-# Manipulation PDF - IMPORTANT pour extraction
+# Traitement PDF
 pypdf>=3.17.0
-pdfplumber>=0.10.3
+pdfplumber>=0.10.0
 
 # Génération PDF
 fpdf>=1.7.2
 
-# Traitement XML (normalement inclus dans Python)
-# xml.etree.ElementTree est dans la bibliothèque standard
+# Manipulation de données
+python-dateutil>=2.8.2
 
-# Optionnel mais recommandé pour pdfplumber
-Pillow>=10.0.0
-pdfminer.six>=20221105
+# Optionnel (si vous avez DeepL Pro)
+# deepl>=1.16.0
+
+# Standard library (déjà incluses, listées pour référence)
+# xml.etree.ElementTree - Inclus
+# io - Inclus
+# json - Inclus
+# datetime - Inclus
+# re - Inclus
+# time - Inclus
+# tarfile - Inclus
