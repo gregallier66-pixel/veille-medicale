@@ -1,5 +1,22 @@
-streamlit
-google-generativeai
-requests
-fpdf
-pypdf
+# Streamlit
+streamlit>=1.28.0
+
+# Google Gemini AI
+google-generativeai>=0.3.0
+
+# Requêtes HTTP
+requests>=2.31.0
+
+# Manipulation PDF - IMPORTANT pour extraction
+pypdf>=3.17.0
+pdfplumber>=0.10.3
+
+# Génération PDF
+fpdf>=1.7.2
+
+# Traitement XML (normalement inclus dans Python)
+# xml.etree.ElementTree est dans la bibliothèque standard
+
+# Optionnel mais recommandé pour pdfplumber
+Pillow>=10.0.0
+pdfminer.six>=20221105
