@@ -751,7 +751,7 @@ for art in st.session_state.articles:
                 )
 
             elif det["erreur"]:
-                st.error(det["erreur"])le Médicale Professionnelle")
+                st.error(f"{det['erreur']} : Veille Médicale Professionnelle")
 
 # Récupération des clés
 try:
