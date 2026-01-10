@@ -13,7 +13,7 @@ import google.generativeai as genai
 ###########################
 
 st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
-st.title("🩺 Veilimport streamlit as st)
+st.title("🩺" Veilimport streamlit as st)
 import requests
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
