@@ -57,12 +57,6 @@ def nettoyer_titre(titre: str) -> str:
         r'\s*\[voir\s+plus\]\s*',
         r'\s*\(voir\s+plus\)\s*',
     ]
-
-\[voir\s+plus\]
-
-\s*',
-        r'\s*\(voir\s+plus\)\s*',
-    ]
     for pat in patterns:
         titre = re.sub(pat, '', titre, flags=re.IGNORECASE)
 
