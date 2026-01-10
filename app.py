@@ -12,8 +12,20 @@ import google.generativeai as genai
 # CONFIG GÉNÉRALE & DEBUG #
 ###########################
 
-st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
-st.title("🩺" Veilimport streamlit as st)
+import streamlit as st
+
+# 1. Configuration de la page (TOUJOURS en premier après l'import)
+st.set_page_config(
+    page_title="Veille Médicale Pro", 
+    page_icon="🩺", 
+    layout="wide"
+)
+
+# 2. Titre de l'application
+st.title("🩺 Veille Médicale Professionnelle")
+
+# 3. Le reste de votre code (colonnes, boutons, etc.)
+
 import requests
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
