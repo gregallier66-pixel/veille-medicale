@@ -39,9 +39,6 @@ import google.generativeai as genai
 # CONFIG GÉNÉRALE & DEBUG #
 ###########################
 
-st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
-st.title("🩺 Veille Médicale Professionnelle")
-
 # Récupération des clés
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
