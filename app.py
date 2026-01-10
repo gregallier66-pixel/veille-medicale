@@ -126,9 +126,10 @@ def traduire_deepl_chunk(texte: str, api_key: str) -> str:
     return r.json()["translations"][0]["text"]
 
 def traduire_gemini_chunk(texte: str, g_key: str) -> str:
-    genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
+    try:
+        genai.configure(api_key=g_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
 
 CONSIGNES STRICTES:
 - Fournis UNIQUEMENT la traduction française
@@ -140,12 +141,21 @@ TEXTE À TRADUIRE:
 {texte}
 
 TRADUCTION FRANÇAISE:"""
-    resp = model.generate_content(prompt)
-    trad = resp.text.strip()
-    trad = trad.replace("**", "")
-    trad = re.sub(r'^(Traduction\s*:?\s*)', '', trad, flags=re.IGNORECASE)
-    trad = nettoyer_titre(trad)
-    return trad
+        resp = model.generate_content(prompt)
+        
+        # Vérifier si la réponse existe
+        if not resp or not hasattr(resp, 'text'):
+            return texte  # Retourner le texte original si erreur
+        
+        trad = resp.text.strip()
+        trad = trad.replace("**", "")
+        trad = re.sub(r'^(Traduction\s*:?\s*)', '', trad, flags=re.IGNORECASE)
+        trad = nettoyer_titre(trad)
+        return trad
+    except Exception as e:
+        # En cas d'erreur, retourner le texte original
+        print(f"Erreur traduction Gemini: {e}")
+        return texte
 
 @st.cache_data(show_spinner=False)
 def traduire_long_texte_cache(texte: str,
@@ -159,11 +169,15 @@ def traduire_long_texte_cache(texte: str,
     chunks = [texte[i:i+chunk_size] for i in range(0, len(texte), chunk_size)]
     trad_total = []
     for chunk in chunks:
-        if mode == "deepl" and deepl_key:
-            t = traduire_deepl_chunk(chunk, deepl_key)
-        else:
-            t = traduire_gemini_chunk(chunk, g_key)
-        trad_total.append(t)
+        try:
+            if mode == "deepl" and deepl_key:
+                t = traduire_deepl_chunk(chunk, deepl_key)
+            else:
+                t = traduire_gemini_chunk(chunk, g_key)
+            trad_total.append(t)
+        except Exception as e:
+            print(f"Erreur traduction chunk: {e}")
+            trad_total.append(chunk)  # Garder le texte original
     return "\n\n".join(trad_total)
 
 @st.cache_data(show_spinner=False)
@@ -346,24 +360,40 @@ def fetch_pdf_from_pmc_ftp(pmcid):
         if len(clean_id) < 2:
             return None, "PMCID invalide"
         
+        # Essayer différentes structures de répertoires
+        subdir_options = []
+        
+        # Option 1: XX/YY structure (standard)
+        if len(clean_id) >= 4:
+            subdir1 = clean_id[:2]
+            subdir2 = clean_id[2:4]
+            subdir_options.append((subdir1, subdir2))
+        
+        # Option 2: XX/00 structure (fallback)
         subdir1 = clean_id[:2]
-        subdir2 = clean_id[2:4] if len(clean_id) >= 4 else "00"
+        subdir_options.append((subdir1, "00"))
         
-        ftp_url = f"ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{subdir1}/{subdir2}/PMC{clean_id}.tar.gz"
+        # Option 3: 0X/YZ structure pour IDs courts
+        if len(clean_id) >= 1:
+            subdir_options.append(("0" + clean_id[0], clean_id[1:3] if len(clean_id) >= 3 else "00"))
         
-        r = requests.get(ftp_url, timeout=30)
-        if r.status_code != 200:
-            return None, f"PMC FTP: HTTP {r.status_code}"
+        for subdir1, subdir2 in subdir_options:
+            ftp_url = f"ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{subdir1}/{subdir2}/PMC{clean_id}.tar.gz"
+            
+            try:
+                r = requests.get(ftp_url, timeout=30)
+                if r.status_code == 200:
+                    tar_buffer = BytesIO(r.content)
+                    with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
+                        for member in tar.getmembers():
+                            if member.name.endswith('.pdf'):
+                                pdf_file = tar.extractfile(member)
+                                if pdf_file:
+                                    return pdf_file.read(), None
+            except Exception:
+                continue
         
-        tar_buffer = BytesIO(r.content)
-        with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
-            for member in tar.getmembers():
-                if member.name.endswith('.pdf'):
-                    pdf_file = tar.extractfile(member)
-                    if pdf_file:
-                        return pdf_file.read(), None
-        
-        return None, "PMC FTP: PDF non trouvé dans l'archive"
+        return None, "PMC FTP: PDF non trouvé"
     
     except Exception as e:
         return None, f"PMC FTP erreur: {e}"
@@ -375,21 +405,68 @@ def fetch_pdf_from_pmc_web(pmcid):
     
     try:
         clean_id = _clean_pmcid(pmcid)
-        pmc_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf/"
         
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(pmc_url, headers=headers, timeout=30, allow_redirects=True)
+        # Essayer plusieurs URLs possibles
+        urls = [
+            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf/",
+            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf",
+            f"https://europepmc.org/articles/PMC{clean_id}?pdf=render",
+        ]
         
-        if r.status_code != 200:
-            return None, f"PMC Web: HTTP {r.status_code}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         
-        if "application/pdf" in r.headers.get("Content-Type", ""):
-            return r.content, None
+        for url in urls:
+            try:
+                r = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+                
+                if r.status_code == 200 and "application/pdf" in r.headers.get("Content-Type", ""):
+                    return r.content, None
+            except Exception:
+                continue
         
-        return None, "PMC Web: pas un PDF"
+        return None, "PMC Web: pas de PDF disponible"
     
     except Exception as e:
         return None, f"PMC Web erreur: {e}"
+
+
+def fetch_pdf_from_pubmed_central(pmcid):
+    """Essaie de récupérer le PDF via PMC Central API."""
+    if not pmcid:
+        return None, "Pas de PMCID"
+    
+    try:
+        clean_id = _clean_pmcid(pmcid)
+        
+        # API PMC OA Service
+        api_url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=PMC{clean_id}"
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(api_url, headers=headers, timeout=20)
+        
+        if r.status_code != 200:
+            return None, f"PMC API: HTTP {r.status_code}"
+        
+        # Parser la réponse XML
+        try:
+            root = ET.fromstring(r.content)
+            
+            # Chercher un lien PDF
+            for link in root.findall('.//link'):
+                href = link.get('href', '')
+                format_attr = link.get('format', '')
+                
+                if 'pdf' in format_attr.lower() or href.endswith('.pdf'):
+                    r2 = requests.get(href, headers=headers, timeout=30)
+                    if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
+                        return r2.content, None
+        except ET.ParseError:
+            pass
+        
+        return None, "PMC API: PDF non trouvé"
+    
+    except Exception as e:
+        return None, f"PMC API erreur: {e}"
 
 def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
     """Tente de récupérer le PDF depuis Europe PMC."""
@@ -425,47 +502,57 @@ def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
         return None, f"EuropePMC erreur: {e}"
 
 def fetch_pdf_cascade(pmid, doi, pmcid, unpaywall_email, utiliser_scihub=False):
-    """Cascade optimisée de récupération PDF."""
+    """Cascade optimisée de récupération PDF avec multiples sources."""
+    reasons = {}
+    
+    # 1. PMC Central API (nouveau - souvent plus fiable)
     if pmcid:
-        pdf, err = fetch_pdf_from_pmc_ftp(pmcid)
+        pdf, err = fetch_pdf_from_pubmed_central(pmcid)
         if pdf:
-            return pdf, f"PMC FTP (PMC{_clean_pmcid(pmcid)})"
-        reason_ftp = err
+            return pdf, f"PMC API (PMC{_clean_pmcid(pmcid)})"
+        reasons['PMC_API'] = err
     else:
-        reason_ftp = "Pas de PMCID"
-
+        reasons['PMC_API'] = "Pas de PMCID"
+    
+    # 2. PMC Web (plusieurs URLs)
     if pmcid:
         pdf, err = fetch_pdf_from_pmc_web(pmcid)
         if pdf:
             return pdf, f"PMC Web (PMC{_clean_pmcid(pmcid)})"
-        reason_web = err
+        reasons['PMC_Web'] = err
     else:
-        reason_web = "Pas de PMCID"
+        reasons['PMC_Web'] = "Pas de PMCID"
+    
+    # 3. PMC FTP
+    if pmcid:
+        pdf, err = fetch_pdf_from_pmc_ftp(pmcid)
+        if pdf:
+            return pdf, f"PMC FTP (PMC{_clean_pmcid(pmcid)})"
+        reasons['PMC_FTP'] = err
+    else:
+        reasons['PMC_FTP'] = "Pas de PMCID"
 
+    # 4. EuropePMC
     pdf, err = fetch_pdf_from_europe_pmc(pmid, pmcid)
     if pdf:
         return pdf, "EuropePMC"
-    reason_eu = err
+    reasons['EuropePMC'] = err
 
+    # 5. Unpaywall
     if doi:
         pdf, err = fetch_pdf_from_unpaywall(doi, unpaywall_email)
         if pdf:
             return pdf, "Unpaywall"
-        reason_up = err
+        reasons['Unpaywall'] = err
     else:
-        reason_up = "Pas de DOI"
+        reasons['Unpaywall'] = "Pas de DOI"
 
-    reason_sh = "Sci-Hub désactivé"
-
-    msg = (
-        f"Échec cascade PDF. "
-        f"PMC FTP: {reason_ftp} | "
-        f"PMC Web: {reason_web} | "
-        f"EuropePMC: {reason_eu} | "
-        f"Unpaywall: {reason_up} | "
-        f"Sci-Hub: {reason_sh}"
-    )
-    return None, msg
+    # Construire le message d'erreur détaillé
+    msg = "Échec récupération PDF. Sources testées:\n"
+    for source, reason in reasons.items():
+        msg += f"  • {source}: {reason}\n"
+    
+    return None, msg.strip()
 
 ###########################
 # EXTRACTION TEXTE PDF    #
@@ -514,20 +601,27 @@ def extract_with_pypdf(pdf_content: bytes) -> str:
         return ""
 
 def extract_text_from_pdf(pdf_content: bytes):
-    """Essaie plusieurs moteurs successivement."""
+    """Essaie plusieurs moteurs successivement avec plus de pages."""
+    # Essayer PyMuPDF (le meilleur généralement)
     txt = extract_with_pymupdf(pdf_content)
-    if len(txt) > 200:
+    if len(txt) > 500:
         return txt, "pymupdf"
 
+    # Essayer pdfplumber
     txt = extract_with_pdfplumber(pdf_content)
-    if len(txt) > 200:
+    if len(txt) > 500:
         return txt, "pdfplumber"
 
+    # Essayer pypdf
     txt = extract_with_pypdf(pdf_content)
-    if len(txt) > 200:
+    if len(txt) > 500:
         return txt, "pypdf"
+    
+    # Si on a du texte mais peu, le retourner quand même
+    if len(txt) > 100:
+        return txt, "extraction_partielle"
 
-    return txt, "extraction_partielle"
+    return "", "echec_extraction"
 
 ###########################
 # NOTEBOOKLM EXPORT       #
@@ -631,7 +725,22 @@ if lancer:
 # AFFICHAGE DES ARTICLES  #
 ###########################
 
-st.write(f"Résultats : {len(st.session_state.articles)} articles trouvés")
+# Statistiques
+total_articles = len(st.session_state.articles)
+pdf_recuperes = sum(1 for pmid in st.session_state.details if st.session_state.details[pmid].get("texte_fr"))
+pdf_echecs = sum(1 for pmid in st.session_state.details if st.session_state.details[pmid].get("erreur"))
+
+col_stat1, col_stat2, col_stat3 = st.columns(3)
+with col_stat1:
+    st.metric("Articles trouvés", total_articles)
+with col_stat2:
+    st.metric("PDFs récupérés", pdf_recuperes)
+with col_stat3:
+    if pdf_recuperes + pdf_echecs > 0:
+        taux = (pdf_recuperes / (pdf_recuperes + pdf_echecs)) * 100
+        st.metric("Taux de succès", f"{taux:.0f}%")
+
+st.markdown("---")
 
 for art in st.session_state.articles:
     pmid = art["pmid"]
@@ -678,25 +787,34 @@ for art in st.session_state.articles:
 
                     if not pdf_bytes:
                         det["erreur"] = source
-                        st.error(f"Échec PDF : {source}")
+                        # Afficher l'erreur de manière plus claire
+                        with st.expander("❌ Détails de l'échec", expanded=False):
+                            st.error(source)
+                            st.info("💡 **Suggestions:**\n- Vérifier si l'article a un PMCID ou DOI\n- Essayer de rechercher le PDF manuellement\n- L'article peut ne pas être en Open Access")
                     else:
                         det["source_pdf"] = source
                         texte_en, methode = extract_text_from_pdf(pdf_bytes)
                         texte_en = nettoyer_texte_pdf(texte_en)
 
                         if len(texte_en) < 200:
-                            det["erreur"] = "Texte extrait insuffisant"
-                            st.error(det["erreur"])
+                            det["erreur"] = f"Texte extrait insuffisant ({len(texte_en)} caractères) - Méthode: {methode}"
+                            st.warning(det["erreur"])
+                            st.info("Le PDF a été téléchargé mais l'extraction de texte a échoué. Il peut s'agir d'un PDF scanné.")
                         else:
                             det["methode_extraction"] = methode
                             texte_en_tronque = tronquer(texte_en)
                             det["texte_en"] = texte_en_tronque
 
                             st.info("Traduction du PDF en cours...")
-                            det["texte_fr"] = traduire_long_texte_cache(
-                                texte_en_tronque, MODE_TRAD, DEEPL_KEY, G_KEY
-                            )
-                            st.success("PDF extrait et traduit avec succès")
+                            try:
+                                det["texte_fr"] = traduire_long_texte_cache(
+                                    texte_en_tronque, MODE_TRAD, DEEPL_KEY, G_KEY
+                                )
+                                st.success(f"✅ PDF extrait et traduit avec succès ({len(texte_en)} caractères)")
+                            except Exception as e:
+                                st.error(f"Erreur lors de la traduction: {e}")
+                                det["texte_fr"] = texte_en_tronque  # Garder le texte anglais
+                                det["erreur"] = f"Traduction échouée: {e}"
 
         with col2:
             if det["texte_fr"]:
