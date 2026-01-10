@@ -9,8 +9,39 @@ import pypdf
 import google.generativeai as genai
 
 ###########################
+# CONFIG GÉNÉRALE & DEBUG #
+###########################
+
+st.set_page_config(page_title="Veille Médicale Pro", layout="wide")
+st.title("🩺 Veille Médicale Professionnelle")
+
+# Récupération des clés
+try:
+    G_KEY = st.secrets["GEMINI_KEY"]
+except Exception:
+    st.error("⚠️ Clé GEMINI_KEY manquante dans st.secrets")
+    st.stop()
+
+DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
+UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
+
+# Mode de traduction (priorité : DeepL si dispo, sinon Gemini)
+MODE_TRAD = "deepl" if DEEPL_KEY else "gemini"
+
+# État global
+if "articles" not in st.session_state:
+    st.session_state.articles = []
+if "details" not in st.session_state:
+    st.session_state.details = {}
+if "debug" not in st.session_state:
+    st.session_state.debug = False
+
+###########################
 # UTILITAIRES GÉNÉRIQUES  #
 ###########################
+
+def maintenant_str() -> str:
+    return datetime.now().strftime("%d/%m/%Y %H:%M")
 
 def nettoyer_texte(texte: str) -> str:
     """Nettoyage générique du texte extrait."""
@@ -26,14 +57,15 @@ def nettoyer_titre(titre: str) -> str:
         return "Titre non disponible"
     titre = re.sub(r'<[^>]+>', '', titre)
     titre = re.sub(r'\s*see\s+more\s*', '', titre, flags=re.IGNORECASE)
-    titre = re.sub(r'\s*\[see\s+more\]\s*', '', titre, flags=re.IGNORECASE)
+    titre = re.sub(r'\s*
+
+\[see\s+more\]
+
+\s*', '', titre, flags=re.IGNORECASE)
     titre = re.sub(r'\s*`\(see\s+more\)`\s*', '', titre, flags=re.IGNORECASE)
     titre = re.sub(r'\s*voir\s+plus\s*', '', titre, flags=re.IGNORECASE)
     titre = re.sub(r'\s+', ' ', titre)
     return titre.strip()
-
-def maintenant_str() -> str:
-    return datetime.now().strftime("%d/%m/%Y %H:%M")
 
 def tronquer(texte: str, max_len: int = 12000) -> str:
     if not texte:
@@ -41,6 +73,106 @@ def tronquer(texte: str, max_len: int = 12000) -> str:
     if len(texte) <= max_len:
         return texte
     return texte[:max_len] + "\n\n[Texte tronqué pour analyse]"
+
+###########################
+# TRADUCTION (DEEPL/GEMINI)
+###########################
+
+def traduire_deepl_chunk(texte: str, api_key: str) -> str:
+    """Traduction EN->FR via API DeepL (chunk unique)."""
+    url = "https://api-free.deepl.com/v2/translate"
+    data = {
+        "auth_key": api_key,
+        "text": texte,
+        "target_lang": "FR",
+        "source_lang": "EN",
+        "formality": "more"
+    }
+    r = requests.post(url, data=data, timeout=40)
+    r.raise_for_status()
+    return r.json()["translations"][0]["text"]
+
+def traduire_gemini_chunk(texte: str, g_key: str) -> str:
+    """Traduction EN->FR via Gemini (chunk unique)."""
+    genai.configure(api_key=g_key)
+    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
+
+CONSIGNES STRICTES:
+- Fournis UNIQUEMENT la traduction française
+- Pas de préambule (pas de "Traduction:", "Voici", etc.)
+- Pas de numérotation ou options multiples
+- Conserve la terminologie médicale exacte
+- Pas de formatage markdown (**, #, etc.)
+
+TEXTE À TRADUIRE:
+{texte}
+
+TRADUCTION FRANÇAISE:"""
+    resp = model.generate_content(prompt)
+    trad = resp.text.strip()
+    trad = trad.replace("**", "")
+    trad = re.sub(r'^(Traduction\s*:?\s*)', '', trad, flags=re.IGNORECASE)
+    trad = re.sub(r'^\d+[\.\)]\s*', '', trad)
+    trad = nettoyer_titre(trad)
+    return trad
+
+@st.cache_data(show_spinner=False)
+def traduire_long_texte_cache(texte: str,
+                              mode: str,
+                              deepl_key: str = None,
+                              g_key: str = None,
+                              chunk_size: int = 4000) -> str:
+    """Traduction longue EN->FR avec chunks + cache."""
+    texte = texte.strip()
+    if not texte:
+        return texte
+    chunks = []
+    for i in range(0, len(texte), chunk_size):
+        chunks.append(texte[i:i+chunk_size])
+
+    trad_total = []
+    for chunk in chunks:
+        if mode == "deepl" and deepl_key:
+            t = traduire_deepl_chunk(chunk, deepl_key)
+        else:
+            t = traduire_gemini_chunk(chunk, g_key)
+        trad_total.append(t)
+    return "\n\n".join(trad_total)
+
+@st.cache_data(show_spinner=False)
+def traduire_texte_court_cache(texte: str,
+                               mode: str,
+                               deepl_key: str = None,
+                               g_key: str = None) -> str:
+    """Traduction courte EN->FR avec cache (pour titres, petits abstracts)."""
+    texte = texte.strip()
+    if not texte:
+        return texte
+    if mode == "deepl" and deepl_key:
+        return traduire_deepl_chunk(texte, deepl_key)
+    else:
+        return traduire_gemini_chunk(texte, g_key)
+
+@st.cache_data(show_spinner=False)
+def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
+    """Traduction FR->EN des mots-clés pour PubMed (via Gemini)."""
+    genai.configure(api_key=g_key)
+    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
+
+CONSIGNES:
+- Fournis UNIQUEMENT les termes anglais
+- Pas d'explication ou préambule
+- Utilise la terminologie MeSH quand possible
+- Sépare les termes par des virgules
+
+MOTS-CLÉS FRANÇAIS:
+{mots_cles_fr}
+
+TERMES ANGLAIS:"""
+    resp = model.generate_content(prompt)
+    return resp.text.strip()
 
 ###########################
 # PUBMED : RECHERCHE      #
@@ -63,6 +195,7 @@ def construire_query_pubmed(mots_cles_en: str,
         query += f' AND {type_etude}[pt]'
     return query
 
+@st.cache_data(show_spinner=False)
 def pubmed_search_ids(query: str, max_results: int = 50):
     params = {
         "db": "pubmed",
@@ -75,8 +208,12 @@ def pubmed_search_ids(query: str, max_results: int = 50):
     data = r.json()
     return data.get("esearchresult", {}).get("idlist", [])
 
-def pubmed_fetch_metadata(pmids):
-    """Récupère titres, journal, date, DOI, PMCID."""
+@st.cache_data(show_spinner=False)
+def pubmed_fetch_metadata_and_abstracts(pmids):
+    """
+    Récupère titres, journal, date, DOI, PMCID ET abstracts.
+    Retourne une liste de dicts.
+    """
     if not pmids:
         return []
     params = {
@@ -93,6 +230,7 @@ def pubmed_fetch_metadata(pmids):
         pmid_elem = article.find('.//PMID')
         pmid = pmid_elem.text if pmid_elem is not None else None
 
+        # Titre
         title_elem = article.find('.//ArticleTitle')
         if title_elem is not None:
             title = ''.join(title_elem.itertext())
@@ -100,12 +238,15 @@ def pubmed_fetch_metadata(pmids):
             title = "Titre non disponible"
         title = nettoyer_titre(title)
 
+        # Journal
         journal_elem = article.find('.//Journal/Title')
         journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
 
+        # Année
         year_elem = article.find('.//PubDate/Year')
         year = year_elem.text if year_elem is not None else "N/A"
 
+        # DOI / PMCID
         doi = None
         pmcid = None
         for aid in article.findall('.//ArticleId'):
@@ -114,13 +255,22 @@ def pubmed_fetch_metadata(pmids):
             if aid.get('IdType') == 'pmc':
                 pmcid = aid.text  # ex: PMC1234567
 
+        # Abstract (peut avoir plusieurs AbstractText)
+        abstract_texts = []
+        for abst in article.findall('.//Abstract/AbstractText'):
+            part = ''.join(abst.itertext())
+            if part:
+                abstract_texts.append(part.strip())
+        abstract = "\n\n".join(abstract_texts).strip() if abstract_texts else ""
+
         results.append({
             "pmid": pmid,
-            "title": title,
+            "title_en": title,
             "journal": journal,
             "year": year,
             "doi": doi,
-            "pmcid": pmcid
+            "pmcid": pmcid,
+            "abstract_en": abstract
         })
     return results
 
@@ -241,12 +391,13 @@ def fetch_pdf_from_unpaywall(doi, email):
                 r3 = requests.get(pdf_url, headers=headers, timeout=30)
                 if r3.status_code == 200 and "application/pdf" in r3.headers.get("Content-Type", ""):
                     return r3.content, None
-            except:
+            except Exception:
                 continue
         return None, "Unpaywall: PDF non trouvé"
     except Exception as e:
         return None, f"Unpaywall erreur: {e}"
 
+@st.cache_data(show_spinner=False)
 def fetch_pdf_cascade(pmid,
                       doi,
                       pmcid,
@@ -258,7 +409,7 @@ def fetch_pdf_cascade(pmid,
     2. PMC Web
     3. EuropePMC
     4. Unpaywall
-    Sci-Hub non implémenté par défaut.
+    Sci-Hub non implémenté par choix juridique.
     """
     if pmcid:
         pdf, err = fetch_pdf_from_pmc_ftp(pmcid)
@@ -353,7 +504,7 @@ def extract_with_pypdf(pdf_content: bytes) -> str:
                 txt = page.extract_text()
                 if txt:
                     texte.append(txt)
-            except:
+            except Exception:
                 continue
         return "\n\n".join(texte)
     except Exception:
@@ -379,93 +530,14 @@ def extract_text_from_pdf(pdf_content: bytes):
     return txt, "extraction_partielle"
 
 ###########################
-# TRADUCTION              #
-###########################
-
-def traduire_deepl(texte: str, api_key: str) -> str:
-    url = "https://api-free.deepl.com/v2/translate"
-    data = {
-        "auth_key": api_key,
-        "text": texte,
-        "target_lang": "FR",
-        "source_lang": "EN",
-        "formality": "more"
-    }
-    r = requests.post(url, data=data, timeout=40)
-    r.raise_for_status()
-    return r.json()["translations"][0]["text"]
-
-def traduire_gemini(texte: str, g_key: str) -> str:
-    genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
-    prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
-
-CONSIGNES STRICTES:
-- Fournis UNIQUEMENT la traduction française
-- Pas de préambule (pas de "Traduction:", "Voici", etc.)
-- Pas de numérotation ou options multiples
-- Conserve la terminologie médicale exacte
-- Pas de formatage markdown (**, #, etc.)
-
-TEXTE À TRADUIRE:
-{texte}
-
-TRADUCTION FRANÇAISE:"""
-    resp = model.generate_content(prompt)
-    trad = resp.text.strip()
-    trad = trad.replace("**", "")
-    trad = re.sub(r'^(Traduction\s*:?\s*)', '', trad, flags=re.IGNORECASE)
-    trad = re.sub(r'^\d+[\.\)]\s*', '', trad)
-    trad = nettoyer_titre(trad)
-    return trad
-
-def traduire_long_texte(texte: str,
-                        mode: str,
-                        deepl_key: str = None,
-                        g_key: str = None,
-                        chunk_size: int = 4000) -> str:
-    texte = texte.strip()
-    if not texte:
-        return texte
-    chunks = []
-    for i in range(0, len(texte), chunk_size):
-        chunks.append(texte[i:i+chunk_size])
-
-    trad_total = []
-    for chunk in chunks:
-        if mode == "deepl" and deepl_key:
-            t = traduire_deepl(chunk, deepl_key)
-        else:
-            t = traduire_gemini(chunk, g_key)
-        trad_total.append(t)
-    return "\n\n".join(trad_total)
-
-def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
-    genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
-    prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
-
-CONSIGNES:
-- Fournis UNIQUEMENT les termes anglais
-- Pas d'explication ou préambule
-- Utilise la terminologie MeSH quand possible
-- Sépare les termes par des virgules
-
-MOTS-CLÉS FRANÇAIS:
-{mots_cles_fr}
-
-TERMES ANGLAIS:"""
-    resp = model.generate_content(prompt)
-    return resp.text.strip()
-
-###########################
 # NOTEBOOKLM EXPORT       #
 ###########################
 
 def build_notebooklm_export(meta, texte_fr: str) -> str:
     """Construit un contenu structuré simple pour NotebookLM."""
     contenu = f"""# VEILLE MEDICALE - {maintenant_str()}
-Titre: {meta['title']}
+Titre: {meta.get('title_fr') or meta.get('title_en')}
+Titre original: {meta.get('title_en')}
 Journal: {meta['journal']} ({meta['year']})
 PMID: {meta['pmid']}
 DOI: {meta.get('doi') or 'N/A'}
@@ -479,29 +551,14 @@ Texte complet traduit:
 # INTERFACE STREAMLIT     #
 ###########################
 
-st.set_page_config(page_title="Veille Médicale Pro (Monolithique)", layout="wide")
-st.title("🩺 Veille Médicale Professionnelle (version monolithique)")
-
-# Récupération des clés
-try:
-    G_KEY = st.secrets["GEMINI_KEY"]
-except:
-    st.error("⚠️ Clé GEMINI_KEY manquante")
-    st.stop()
-
-DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
-UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
-
-mode_trad = "deepl" if DEEPL_KEY else "gemini"
-
-if "articles" not in st.session_state:
-    st.session_state.articles = []
-if "details" not in st.session_state:
-    st.session_state.details = {}
-
 with st.sidebar:
     st.header("⚙️ Paramètres de recherche")
 
+    # Mode debug
+    debug = st.checkbox("Activer le mode debug", value=st.session_state.debug)
+    st.session_state.debug = debug
+
+    # Mots-clés
     mots_cles_fr = st.text_area("Mots-clés (FR)", "hypertension gravidique", height=80)
 
     trad_preview = ""
@@ -513,9 +570,11 @@ with st.sidebar:
         except Exception as e:
             st.warning(f"Erreur traduction mots-clés: {e}")
 
+    # Dates
     date_debut = st.date_input("Date début", value=date(2024, 1, 1))
     date_fin = st.date_input("Date fin", value=date.today())
 
+    # Langue
     langue = st.selectbox("Langue", ["Toutes", "Anglais uniquement", "Français uniquement"])
     if langue == "Anglais uniquement":
         langue_code = "eng"
@@ -524,6 +583,7 @@ with st.sidebar:
     else:
         langue_code = ""
 
+    # Type d'étude
     type_etude_label = st.selectbox(
         "Type d'étude",
         ["Aucun filtre", "Essais cliniques", "Méta-analyses", "Revues systématiques"]
@@ -536,8 +596,10 @@ with st.sidebar:
     }
     type_etude = mapping_types[type_etude_label]
 
+    # Nombre max d'articles
     nb_max = st.slider("Nombre max d'articles", 10, 200, 50, 10)
 
+    # Sci-Hub (non implémenté)
     utiliser_scihub = st.checkbox(
         "Activer Sci-Hub (dernier recours) [non implémenté]",
         value=False
@@ -545,50 +607,126 @@ with st.sidebar:
 
     lancer = st.button("🔍 Lancer la recherche", type="primary", use_container_width=True)
 
+###########################
+# LOGIQUE DE RECHERCHE    #
+###########################
+
 if lancer:
     st.session_state.articles = []
     st.session_state.details = {}
     if not mots_cles_fr.strip():
         st.error("Merci de saisir au moins un mot-clé.")
     else:
-        with st.spinner("Recherche PubMed..."):
-            mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-            query = construire_query_pubmed(
-                mots_cles_en,
-                date_debut,
-                date_fin,
-                langue_code=langue_code,
-                type_etude=type_etude
-            )
+        with st.spinner("Traduction des mots-clés et recherche PubMed..."):
             try:
+                mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+                query = construire_query_pubmed(
+                    mots_cles_en,
+                    date_debut,
+                    date_fin,
+                    langue_code=langue_code,
+                    type_etude=type_etude
+                )
+                if debug:
+                    st.write("🔎 Query PubMed :", query)
+
                 pmids = pubmed_search_ids(query, max_results=nb_max)
-                meta = pubmed_fetch_metadata(pmids)
-                st.session_state.articles = meta
+                meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
+
+                # Traduction des titres et abstracts
+                articles = []
+                for art in meta_list:
+                    title_en = art["title_en"] or ""
+                    abstract_en = art["abstract_en"] or ""
+
+                    # Traduire le titre (court)
+                    try:
+                        title_fr = traduire_texte_court_cache(
+                            title_en,
+                            mode=MODE_TRAD,
+                            deepl_key=DEEPL_KEY,
+                            g_key=G_KEY
+                        ) if title_en else "Titre non disponible"
+                    except Exception as e:
+                        title_fr = title_en or "Titre non disponible"
+                        if debug:
+                            st.warning(f"Erreur traduction titre (PMID {art['pmid']}) : {e}")
+
+                    # Traduire l'abstract (peut être plus long, mais on utilise la fonction longue)
+                    if abstract_en:
+                        try:
+                            abstract_fr = traduire_long_texte_cache(
+                                abstract_en,
+                                mode=MODE_TRAD,
+                                deepl_key=DEEPL_KEY,
+                                g_key=G_KEY,
+                                chunk_size=2000
+                            )
+                        except Exception as e:
+                            abstract_fr = ""
+                            if debug:
+                                st.warning(f"Erreur traduction abstract (PMID {art['pmid']}) : {e}")
+                    else:
+                        abstract_fr = ""
+
+                    art["title_fr"] = title_fr
+                    art["abstract_fr"] = abstract_fr
+                    articles.append(art)
+
+                st.session_state.articles = articles
+
             except Exception as e:
                 st.error(f"Erreur lors de la recherche PubMed : {e}")
 
 st.write(f"Résultats : {len(st.session_state.articles)} articles trouvés")
 
+###########################
+# AFFICHAGE DES ARTICLES  #
+###########################
+
 for art in st.session_state.articles:
     pmid = art["pmid"]
-    with st.expander(f"{art['title']} ({art['journal']} {art['year']}) - PMID {pmid}"):
+
+    # Initialisation de l'état détaillé pour cet article
+    if pmid not in st.session_state.details:
+        st.session_state.details[pmid] = {
+            "texte_en": None,
+            "texte_fr": None,
+            "source_pdf": None,
+            "methode_extraction": None,
+            "erreur": None,
+        }
+
+    det = st.session_state.details[pmid]
+
+    # Label expander : Titre FR en premier
+    exp_label = f"{art['title_fr']} ({art['journal']} {art['year']}) - PMID {pmid}"
+    with st.expander(exp_label):
+        # Infos générales
+        st.markdown(f"**Titre original (EN) :** *{art['title_en']}*")
         st.write(f"**Journal :** {art['journal']} ({art['year']})")
         st.write(f"**PMID :** {pmid}")
         st.write(f"**DOI :** {art.get('doi') or 'N/A'}")
         st.write(f"**PMCID :** {art.get('pmcid') or 'N/A'}")
 
-        if pmid not in st.session_state.details:
-            st.session_state.details[pmid] = {
-                "texte_en": None,
-                "texte_fr": None,
-                "source_pdf": None,
-                "methode_extraction": None,
-                "erreur": None,
-            }
+        # Abstract traduit + original AVANT toute extraction PDF
+        if art.get("abstract_fr") or art.get("abstract_en"):
+            st.markdown("### 🧾 Abstract (FR)")
+            if art.get("abstract_fr"):
+                st.text(art["abstract_fr"])
+            else:
+                st.info("Aucun abstract traduit disponible.")
 
-        det = st.session_state.details[pmid]
+            if art.get("abstract_en"):
+                with st.expander("Voir abstract original (EN)"):
+                    st.text(art["abstract_en"])
+        else:
+            st.info("Aucun abstract disponible pour cet article.")
+
+        st.markdown("---")
 
         col1, col2 = st.columns(2)
+
         with col1:
             if st.button(f"📥 Récupérer PDF + traduire (PMID {pmid})", key=f"btn_{pmid}"):
                 with st.spinner("Téléchargement et extraction du PDF..."):
@@ -602,6 +740,8 @@ for art in st.session_state.articles:
                     if not pdf_bytes:
                         det["erreur"] = source
                         st.error(f"Échec PDF : {source}")
+                        if st.session_state.debug:
+                            st.write("Détails erreur cascade PDF :", source)
                     else:
                         det["source_pdf"] = source
                         texte_en, methode = extract_text_from_pdf(pdf_bytes)
@@ -614,11 +754,11 @@ for art in st.session_state.articles:
                             texte_en_tronque = tronquer(texte_en, 12000)
                             det["texte_en"] = texte_en_tronque
 
-                            st.info("Traduction en cours...")
+                            st.info("Traduction du PDF en cours...")
                             try:
-                                texte_fr = traduire_long_texte(
+                                texte_fr = traduire_long_texte_cache(
                                     texte_en_tronque,
-                                    mode=mode_trad,
+                                    mode=MODE_TRAD,
                                     deepl_key=DEEPL_KEY,
                                     g_key=G_KEY
                                 )
@@ -627,12 +767,14 @@ for art in st.session_state.articles:
                             except Exception as e:
                                 det["erreur"] = f"Erreur traduction: {e}"
                                 st.error(det["erreur"])
+                                if st.session_state.debug:
+                                    st.write("Détails erreur traduction PDF :", e)
 
         with col2:
             if det["texte_fr"]:
                 st.write(f"**Source PDF :** {det['source_pdf']}")
                 st.write(f"**Méthode extraction :** {det['methode_extraction']}")
-                st.write("**Aperçu du texte traduit :**")
+                st.write("**Aperçu du texte traduit (PDF) :**")
                 st.text(det["texte_fr"][:800])
 
                 export_txt = build_notebooklm_export(art, det["texte_fr"])
