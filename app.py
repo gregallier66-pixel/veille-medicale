@@ -752,6 +752,7 @@ for art in st.session_state.articles:
             "source_pdf": None,
             "methode_extraction": None,
             "erreur": None,
+            "pdf_bytes": None,
         }
 
     det = st.session_state.details[pmid]
@@ -774,61 +775,115 @@ for art in st.session_state.articles:
 
         st.markdown("---")
 
-        col1, col2 = st.columns(2)
+        # Bouton pour récupérer le PDF
+        if st.button(f"📥 Récupérer PDF + traduire (PMID {pmid})", key=f"btn_{pmid}"):
 
-        with col1:
-            if st.button(f"📥 Récupérer PDF + traduire (PMID {pmid})", key=f"btn_{pmid}"):
-
-                with st.spinner("Téléchargement et extraction du PDF..."):
-                    pdf_bytes, source = fetch_pdf_cascade(
-                        pmid, art.get("doi"), art.get("pmcid"),
-                        UNPAYWALL_EMAIL, utiliser_scihub
-                    )
-
-                    if not pdf_bytes:
-                        det["erreur"] = source
-                        # Afficher l'erreur de manière plus claire
-                        with st.expander("❌ Détails de l'échec", expanded=False):
-                            st.error(source)
-                            st.info("💡 **Suggestions:**\n- Vérifier si l'article a un PMCID ou DOI\n- Essayer de rechercher le PDF manuellement\n- L'article peut ne pas être en Open Access")
-                    else:
-                        det["source_pdf"] = source
-                        texte_en, methode = extract_text_from_pdf(pdf_bytes)
-                        texte_en = nettoyer_texte_pdf(texte_en)
-
-                        if len(texte_en) < 200:
-                            det["erreur"] = f"Texte extrait insuffisant ({len(texte_en)} caractères) - Méthode: {methode}"
-                            st.warning(det["erreur"])
-                            st.info("Le PDF a été téléchargé mais l'extraction de texte a échoué. Il peut s'agir d'un PDF scanné.")
-                        else:
-                            det["methode_extraction"] = methode
-                            texte_en_tronque = tronquer(texte_en)
-                            det["texte_en"] = texte_en_tronque
-
-                            st.info("Traduction du PDF en cours...")
-                            try:
-                                det["texte_fr"] = traduire_long_texte_cache(
-                                    texte_en_tronque, MODE_TRAD, DEEPL_KEY, G_KEY
-                                )
-                                st.success(f"✅ PDF extrait et traduit avec succès ({len(texte_en)} caractères)")
-                            except Exception as e:
-                                st.error(f"Erreur lors de la traduction: {e}")
-                                det["texte_fr"] = texte_en_tronque  # Garder le texte anglais
-                                det["erreur"] = f"Traduction échouée: {e}"
-
-        with col2:
-            if det["texte_fr"]:
-                st.write(f"**Source PDF :** {det['source_pdf']}")
-                st.write(f"**Méthode extraction :** {det['methode_extraction']}")
-                st.text(det["texte_fr"][:800])
-
-                export_txt = build_notebooklm_export(art, det["texte_fr"])
-                st.download_button(
-                    "📥 Export NotebookLM",
-                    data=export_txt,
-                    file_name=f"notebooklm_pmid_{pmid}.txt",
-                    mime="text/plain"
+            with st.spinner("Téléchargement et extraction du PDF..."):
+                pdf_bytes, source = fetch_pdf_cascade(
+                    pmid, art.get("doi"), art.get("pmcid"),
+                    UNPAYWALL_EMAIL, utiliser_scihub
                 )
 
-            elif det["erreur"]:
-                st.error(det["erreur"])
+                if not pdf_bytes:
+                    det["erreur"] = source
+                    # Afficher l'erreur de manière plus claire
+                    with st.expander("❌ Détails de l'échec", expanded=False):
+                        st.error(source)
+                        st.info("💡 **Suggestions:**\n- Vérifier si l'article a un PMCID ou DOI\n- Essayer de rechercher le PDF manuellement\n- L'article peut ne pas être en Open Access")
+                else:
+                    det["source_pdf"] = source
+                    det["pdf_bytes"] = pdf_bytes  # Stocker le PDF
+                    
+                    texte_en, methode = extract_text_from_pdf(pdf_bytes)
+                    texte_en = nettoyer_texte_pdf(texte_en)
+
+                    if len(texte_en) < 200:
+                        det["erreur"] = f"Texte extrait insuffisant ({len(texte_en)} caractères) - Méthode: {methode}"
+                        st.warning(det["erreur"])
+                        st.info("Le PDF a été téléchargé mais l'extraction de texte a échoué. Il peut s'agir d'un PDF scanné.")
+                    else:
+                        det["methode_extraction"] = methode
+                        texte_en_tronque = tronquer(texte_en)
+                        det["texte_en"] = texte_en_tronque
+
+                        st.info("Traduction du PDF en cours...")
+                        try:
+                            det["texte_fr"] = traduire_long_texte_cache(
+                                texte_en_tronque, MODE_TRAD, DEEPL_KEY, G_KEY
+                            )
+                            st.success(f"✅ PDF extrait et traduit avec succès ({len(texte_en)} caractères)")
+                        except Exception as e:
+                            st.error(f"Erreur lors de la traduction: {e}")
+                            det["texte_fr"] = texte_en_tronque  # Garder le texte anglais
+                            det["erreur"] = f"Traduction échouée: {e}"
+
+        # Section des téléchargements (visible seulement si le PDF a été récupéré)
+        if det["texte_fr"] or det["pdf_bytes"]:
+            st.markdown("---")
+            st.markdown("### 📥 Téléchargements disponibles")
+            
+            col_dl1, col_dl2, col_dl3, col_dl4 = st.columns(4)
+            
+            # Télécharger le PDF original
+            if det["pdf_bytes"]:
+                with col_dl1:
+                    st.download_button(
+                        "📄 PDF Original",
+                        data=det["pdf_bytes"],
+                        file_name=f"article_pmid_{pmid}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+            
+            # Télécharger la traduction française (texte)
+            if det["texte_fr"]:
+                with col_dl2:
+                    st.download_button(
+                        "🇫🇷 Traduction FR",
+                        data=det["texte_fr"],
+                        file_name=f"traduction_pmid_{pmid}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+            
+            # Télécharger le texte anglais original
+            if det["texte_en"]:
+                with col_dl3:
+                    st.download_button(
+                        "🇬🇧 Texte EN",
+                        data=det["texte_en"],
+                        file_name=f"texte_en_pmid_{pmid}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+            
+            # Export NotebookLM
+            if det["texte_fr"]:
+                with col_dl4:
+                    export_txt = build_notebooklm_export(art, det["texte_fr"])
+                    st.download_button(
+                        "📓 NotebookLM",
+                        data=export_txt,
+                        file_name=f"notebooklm_pmid_{pmid}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+            
+            # Aperçu du texte traduit
+            if det["texte_fr"]:
+                st.markdown("---")
+                st.markdown("### 📖 Aperçu de la traduction")
+                st.write(f"**Source PDF :** {det['source_pdf']}")
+                st.write(f"**Méthode extraction :** {det['methode_extraction']}")
+                
+                with st.expander("Voir le texte traduit (800 premiers caractères)"):
+                    st.text(det["texte_fr"][:800])
+
+        elif det["erreur"]:
+            st.error(det["erreur"])
+
+# Bouton de retour en haut
+if st.session_state.articles:
+    st.markdown("---")
+    if st.button("⬆️ Retour en haut de la liste", use_container_width=True):
+        st.rerun()
