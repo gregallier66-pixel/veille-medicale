@@ -323,6 +323,115 @@ def fetch_pdf_from_unpaywall(doi, email):
 
 
 @st.cache_data(show_spinner=False)
+###########################
+# FONCTIONS PDF MANQUANTES #
+###########################
+
+def _clean_pmcid(pmcid: str) -> str:
+    """Nettoie le PMCID en enlevant le préfixe PMC s'il existe."""
+    if not pmcid:
+        return ""
+    return pmcid.replace("PMC", "").strip()
+
+
+def fetch_pdf_from_pmc_ftp(pmcid):
+    """Tente de récupérer le PDF depuis le serveur FTP de PMC."""
+    if not pmcid:
+        return None, "Pas de PMCID"
+    
+    try:
+        clean_id = _clean_pmcid(pmcid)
+        # Construction de l'URL FTP
+        # Format: ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/XX/YY/PMCxxxxxxx.tar.gz
+        # où XX/YY sont les 2 premiers groupes de chiffres du PMCID
+        
+        if len(clean_id) < 2:
+            return None, "PMCID invalide"
+        
+        subdir1 = clean_id[:2]
+        subdir2 = clean_id[2:4] if len(clean_id) >= 4 else "00"
+        
+        ftp_url = f"ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{subdir1}/{subdir2}/PMC{clean_id}.tar.gz"
+        
+        # Téléchargement du fichier tar.gz
+        r = requests.get(ftp_url, timeout=30)
+        if r.status_code != 200:
+            return None, f"PMC FTP: HTTP {r.status_code}"
+        
+        # Extraction du PDF depuis l'archive tar.gz
+        tar_buffer = BytesIO(r.content)
+        with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
+            for member in tar.getmembers():
+                if member.name.endswith('.pdf'):
+                    pdf_file = tar.extractfile(member)
+                    if pdf_file:
+                        return pdf_file.read(), None
+        
+        return None, "PMC FTP: PDF non trouvé dans l'archive"
+    
+    except Exception as e:
+        return None, f"PMC FTP erreur: {e}"
+
+
+def fetch_pdf_from_pmc_web(pmcid):
+    """Tente de récupérer le PDF depuis le site web de PMC."""
+    if not pmcid:
+        return None, "Pas de PMCID"
+    
+    try:
+        clean_id = _clean_pmcid(pmcid)
+        pmc_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf/"
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(pmc_url, headers=headers, timeout=30, allow_redirects=True)
+        
+        if r.status_code != 200:
+            return None, f"PMC Web: HTTP {r.status_code}"
+        
+        if "application/pdf" in r.headers.get("Content-Type", ""):
+            return r.content, None
+        
+        return None, "PMC Web: pas un PDF"
+    
+    except Exception as e:
+        return None, f"PMC Web erreur: {e}"
+
+
+def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
+    """Tente de récupérer le PDF depuis Europe PMC."""
+    if not pmid and not pmcid:
+        return None, "Pas de PMID ni PMCID"
+    
+    try:
+        # Europe PMC accepte soit PMID soit PMCID
+        identifier = f"PMC{_clean_pmcid(pmcid)}" if pmcid else pmid
+        eu_url = f"https://europepmc.org/api/fulltextRepo?pmid={identifier}"
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(eu_url, headers=headers, timeout=30)
+        
+        if r.status_code != 200:
+            return None, f"EuropePMC: HTTP {r.status_code}"
+        
+        # Analyse de la réponse XML pour trouver le lien PDF
+        try:
+            root = ET.fromstring(r.content)
+            pdf_link = root.find('.//link[@format="pdf"]')
+            
+            if pdf_link is not None and pdf_link.get('href'):
+                pdf_url = pdf_link.get('href')
+                r2 = requests.get(pdf_url, headers=headers, timeout=30)
+                
+                if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
+                    return r2.content, None
+        except ET.ParseError:
+            pass
+        
+        return None, "EuropePMC: PDF non trouvé"
+    
+    except Exception as e:
+        return None, f"EuropePMC erreur: {e}"
+        
 def fetch_pdf_cascade(pmid, doi, pmcid, unpaywall_email, utiliser_scihub=False):
     """Cascade optimisée de récupération PDF."""
     # 1. PMC FTP
