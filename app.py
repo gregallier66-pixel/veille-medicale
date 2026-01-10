@@ -120,7 +120,7 @@ def traduire_deepl_chunk(texte: str, api_key: str) -> str:
 
 def traduire_gemini_chunk(texte: str, g_key: str) -> str:
     genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
 
 CONSIGNES STRICTES:
@@ -175,7 +175,7 @@ def traduire_texte_court_cache(texte: str,
 @st.cache_data(show_spinner=False)
 def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
     genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
 
 CONSIGNES:
