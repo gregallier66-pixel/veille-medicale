@@ -1,8 +1,8 @@
-streamlit
-requests
-pypdf
-pdfplumber
-PyMuPDF
-google-generativeai
-deepl
-lxml
+streamlit>=1.32
+requests>=2.31
+pypdf>=4.0
+pdfplumber>=0.11
+PyMuPDF>=1.23
+google-generativeai>=0.5
+deepl>=1.17
+lxml>=5.1
