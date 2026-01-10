@@ -50,15 +50,13 @@ def nettoyer_titre(titre: str) -> str:
 
     patterns = [
         r'\s*see\s+more\s*',
-        r'\s*
-
-\[see\s+more\]
-
-\s*',
+        r'\s*\[see\s+more\]\s*',
         r'\s*\(see\s+more\)\s*',
         r'\s*`\(see\s+more\)`\s*',
         r'\s*voir\s+plus\s*',
-        r'\s*
+        r'\s*\[voir\s+plus\]\s*',
+        r'\s*\(voir\s+plus\)\s*',
+    ]
 
 \[voir\s+plus\]
 
