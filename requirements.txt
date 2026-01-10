@@ -1,10 +1,7 @@
 streamlit
 requests
-google-generativeai
 pypdf
 pdfplumber
-pymupdf
+PyMuPDF
+google-generativeai
 deepl
-lxml
-beautifulsoup4
-python-dotenv
