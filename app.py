@@ -137,21 +137,13 @@ def nettoyer_titre(titre: str) -> str:
 
     patterns = [
         r'\s*see\s+more\s*',
-        r'
-
-\[see\s+more\]
-
-',
+        r'\[see\s+more\]',
         r'\(see\s+more\)',
-        r'`\(\s*see\s+more\s*\)`',
+        r'\(\s*see\s+more\s*\)',
         r'\s*voir\s+plus\s*',
-        r'
-
-\[voir\s+plus\]
-
-',
+        r'\[voir\s+plus\]',
         r'\(voir\s+plus\)',
-        r'\s*'  # motif neutre mais valide
+        r'\s+'  # motif neutre mais valide
     ]
 
     # Vérification automatique
