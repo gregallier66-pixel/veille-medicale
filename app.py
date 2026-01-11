@@ -30,14 +30,20 @@ st.set_page_config(
 
 st.title("🩺 Veille Médicale Professionnelle")
 
-# Récupération des clés
+# Récupération des clés avec debug
 try:
     G_KEY = st.secrets["GEMINI_KEY"]
-except Exception:
-    st.error("⚠️ Clé GEMINI_KEY manquante dans st.secrets")
+    st.sidebar.success("✅ Clé Gemini chargée")
+except Exception as e:
+    st.error(f"⚠️ Clé GEMINI_KEY manquante dans st.secrets: {e}")
     st.stop()
 
 DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
+if DEEPL_KEY:
+    st.sidebar.success("✅ Clé DeepL chargée")
+else:
+    st.sidebar.info("ℹ️ DeepL non configuré, utilisation de Gemini")
+
 UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
 
 MODE_TRAD = "deepl" if DEEPL_KEY else "gemini"
@@ -50,14 +56,24 @@ if "details" not in st.session_state:
 if "historique" not in st.session_state:
     st.session_state.historique = []
 if "debug" not in st.session_state:
-    st.session_state.debug = False
+    st.session_state.debug = True  # Activé par défaut pour debug
 
 
 # ============================================
-# CONFIGURATION DES SPÉCIALITÉS (inline)
+# CONFIGURATION DES SPÉCIALITÉS
 # ============================================
 
 SPECIALITES = {
+    "Anesthésie Réanimation": {
+        "journaux": [
+            "Anesthesiology",
+            "British Journal of Anaesthesia",
+            "Anaesthesia",
+            "Critical Care Medicine",
+            "Intensive Care Medicine"
+        ],
+        "mesh_terms": "Anesthesiology[MeSH Terms] OR Critical Care[MeSH Terms] OR Intensive Care[MeSH Terms]"
+    },
     "Cardiologie": {
         "journaux": [
             "Circulation",
@@ -68,23 +84,23 @@ SPECIALITES = {
         ],
         "mesh_terms": "Cardiology[MeSH Terms] OR Cardiovascular Diseases[MeSH Terms]"
     },
-    "Gynécologie / Obstétrique": {
+    "Chirurgie Orthopédique": {
         "journaux": [
-            "Obstetrics and Gynecology",
-            "American Journal of Obstetrics and Gynecology",
-            "BJOG",
-            "Human Reproduction"
+            "The Journal of Bone and Joint Surgery",
+            "Journal of Orthopaedic Research",
+            "Clinical Orthopaedics and Related Research",
+            "Arthroscopy"
         ],
-        "mesh_terms": "Gynecology[MeSH Terms] OR Obstetrics[MeSH Terms]"
+        "mesh_terms": "Orthopedics[MeSH Terms] OR Orthopedic Procedures[MeSH Terms]"
     },
-    "Neurologie": {
+    "Chirurgie Viscérale": {
         "journaux": [
-            "Neurology",
-            "Brain",
-            "Annals of Neurology",
-            "Stroke"
+            "Annals of Surgery",
+            "British Journal of Surgery",
+            "JAMA Surgery",
+            "Journal of the American College of Surgeons"
         ],
-        "mesh_terms": "Neurology[MeSH Terms] OR Nervous System Diseases[MeSH Terms]"
+        "mesh_terms": "General Surgery[MeSH Terms] OR Digestive System Surgical Procedures[MeSH Terms]"
     },
     "Endocrinologie": {
         "journaux": [
@@ -95,14 +111,78 @@ SPECIALITES = {
         ],
         "mesh_terms": "Endocrinology[MeSH Terms] OR Endocrine System Diseases[MeSH Terms]"
     },
-    "Pneumologie": {
+    "Gynécologie / Obstétrique": {
         "journaux": [
-            "American Journal of Respiratory and Critical Care Medicine",
-            "Chest",
-            "Thorax",
-            "European Respiratory Journal"
+            "Obstetrics and Gynecology",
+            "American Journal of Obstetrics and Gynecology",
+            "BJOG",
+            "Human Reproduction"
         ],
-        "mesh_terms": "Pulmonary Medicine[MeSH Terms] OR Respiratory Tract Diseases[MeSH Terms]"
+        "mesh_terms": "Gynecology[MeSH Terms] OR Obstetrics[MeSH Terms]"
+    },
+    "Hématologie": {
+        "journaux": [
+            "Blood",
+            "Haematologica",
+            "Leukemia",
+            "Journal of Thrombosis and Haemostasis"
+        ],
+        "mesh_terms": "Hematology[MeSH Terms] OR Hematologic Diseases[MeSH Terms]"
+    },
+    "Hépato-Gastro-Entérologie": {
+        "journaux": [
+            "Gastroenterology",
+            "Gut",
+            "Hepatology",
+            "American Journal of Gastroenterology",
+            "Journal of Hepatology"
+        ],
+        "mesh_terms": "Gastroenterology[MeSH Terms] OR Gastrointestinal Diseases[MeSH Terms] OR Liver Diseases[MeSH Terms]"
+    },
+    "Infectiologie": {
+        "journaux": [
+            "The Lancet Infectious Diseases",
+            "Clinical Infectious Diseases",
+            "The Journal of Infectious Diseases",
+            "Emerging Infectious Diseases"
+        ],
+        "mesh_terms": "Infectious Diseases[MeSH Terms] OR Communicable Diseases[MeSH Terms]"
+    },
+    "Médecine Générale": {
+        "journaux": [
+            "The BMJ",
+            "JAMA",
+            "The Lancet",
+            "Annals of Family Medicine",
+            "British Journal of General Practice"
+        ],
+        "mesh_terms": "General Practice[MeSH Terms] OR Family Practice[MeSH Terms] OR Primary Health Care[MeSH Terms]"
+    },
+    "Médecine Interne": {
+        "journaux": [
+            "Annals of Internal Medicine",
+            "JAMA Internal Medicine",
+            "The American Journal of Medicine",
+            "Archives of Internal Medicine"
+        ],
+        "mesh_terms": "Internal Medicine[MeSH Terms]"
+    },
+    "Néphrologie": {
+        "journaux": [
+            "Journal of the American Society of Nephrology",
+            "Kidney International",
+            "Nephrology Dialysis Transplantation"
+        ],
+        "mesh_terms": "Nephrology[MeSH Terms] OR Kidney Diseases[MeSH Terms]"
+    },
+    "Neurologie": {
+        "journaux": [
+            "Neurology",
+            "Brain",
+            "Annals of Neurology",
+            "Stroke"
+        ],
+        "mesh_terms": "Neurology[MeSH Terms] OR Nervous System Diseases[MeSH Terms]"
     },
     "Oncologie": {
         "journaux": [
@@ -113,22 +193,50 @@ SPECIALITES = {
         ],
         "mesh_terms": "Oncology[MeSH Terms] OR Neoplasms[MeSH Terms]"
     },
-    "Néphrologie": {
+    "ORL": {
         "journaux": [
-            "Journal of the American Society of Nephrology",
-            "Kidney International",
-            "Nephrology Dialysis Transplantation"
+            "The Laryngoscope",
+            "Otolaryngology--Head and Neck Surgery",
+            "International Forum of Allergy & Rhinology",
+            "JAMA Otolaryngology–Head & Neck Surgery"
         ],
-        "mesh_terms": "Nephrology[MeSH Terms] OR Kidney Diseases[MeSH Terms]"
+        "mesh_terms": "Otolaryngology[MeSH Terms] OR Otorhinolaryngologic Diseases[MeSH Terms]"
     },
-    "Hématologie": {
+    "Pédiatrie": {
         "journaux": [
-            "Blood",
-            "Haematologica",
-            "Leukemia",
-            "Journal of Thrombosis and Haemostasis"
+            "Pediatrics",
+            "JAMA Pediatrics",
+            "The Journal of Pediatrics",
+            "Archives of Disease in Childhood"
         ],
-        "mesh_terms": "Hematology[MeSH Terms] OR Hematologic Diseases[MeSH Terms]"
+        "mesh_terms": "Pediatrics[MeSH Terms] OR Child[MeSH Terms]"
+    },
+    "Pneumologie": {
+        "journaux": [
+            "American Journal of Respiratory and Critical Care Medicine",
+            "Chest",
+            "Thorax",
+            "European Respiratory Journal"
+        ],
+        "mesh_terms": "Pulmonary Medicine[MeSH Terms] OR Respiratory Tract Diseases[MeSH Terms]"
+    },
+    "Psychiatrie": {
+        "journaux": [
+            "American Journal of Psychiatry",
+            "JAMA Psychiatry",
+            "The Lancet Psychiatry",
+            "Biological Psychiatry"
+        ],
+        "mesh_terms": "Psychiatry[MeSH Terms] OR Mental Disorders[MeSH Terms]"
+    },
+    "Urologie": {
+        "journaux": [
+            "The Journal of Urology",
+            "European Urology",
+            "BJU International",
+            "Urology"
+        ],
+        "mesh_terms": "Urology[MeSH Terms] OR Urologic Diseases[MeSH Terms]"
     }
 }
 
@@ -137,31 +245,12 @@ SPECIALITES = {
 # PARTIE 2 — FONCTIONS UTILITAIRES TEXTE
 # ============================================
 
-def valider_regex(patterns: list, contexte: str = "Motifs regex"):
-    """Vérifie que chaque motif regex est valide."""
-    erreurs = []
-    for pat in patterns:
-        try:
-            re.compile(pat)
-        except re.error as e:
-            erreurs.append((pat, str(e)))
-
-    if erreurs:
-        st.error(f"❌ Erreurs détectées dans {contexte} :")
-        for pat, err in erreurs:
-            st.write(f"- Motif : `{pat}` → **{err}**")
-    else:
-        st.success(f"✔️ Tous les motifs regex de {contexte} sont valides.")
-
-
 def nettoyer_titre(titre: str) -> str:
     """Nettoie le titre d'article : balises HTML, mentions 'see more', espaces."""
     if not titre:
         return "Titre non disponible"
 
-    # Supprimer balises HTML
     titre = re.sub(r'<[^>]+>', '', titre)
-
     patterns = [
         r'\s*see\s+more\s*',
         r'\[see\s+more\]',
@@ -170,7 +259,6 @@ def nettoyer_titre(titre: str) -> str:
         r'\s*voir\s+plus\s*',
         r'\[voir\s+plus\]',
         r'\(voir\s+plus\)',
-        r'\s+'
     ]
 
     for pat in patterns:
@@ -277,7 +365,7 @@ TRADUCTION FRANÇAISE:"""
         return trad.strip()
 
     except Exception as e:
-        print(f"Erreur traduction Gemini: {e}")
+        st.error(f"❌ Erreur traduction Gemini: {e}")
         return texte
 
 
@@ -305,13 +393,12 @@ def traduire_long_texte_cache(
                 t = traduire_gemini_chunk(chunk, g_key)
             trad_total.append(t)
         except Exception as e:
-            print(f"Erreur traduction chunk: {e}")
+            st.error(f"❌ Erreur traduction chunk: {e}")
             trad_total.append(chunk)
 
     return "\n\n".join(trad_total)
 
 
-@st.cache_data(show_spinner=False)
 def traduire_texte_court_cache(
     texte: str,
     mode: str,
@@ -329,13 +416,13 @@ def traduire_texte_court_cache(
         return traduire_gemini_chunk(texte, g_key)
 
 
-@st.cache_data(show_spinner=False)
 def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
     """Traduit des mots-clés FR → EN optimisés pour PubMed (MeSH si possible)."""
-    genai.configure(api_key=g_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    try:
+        genai.configure(api_key=g_key)
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
-    prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
+        prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
 
 CONSIGNES:
 - Fournis UNIQUEMENT les termes anglais
@@ -347,8 +434,11 @@ MOTS-CLÉS FRANÇAIS:
 
 TERMES ANGLAIS:"""
 
-    resp = model.generate_content(prompt)
-    return resp.text.strip()
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
+    except Exception as e:
+        st.error(f"❌ Erreur traduction mots-clés: {e}")
+        return mots_cles_fr
 
 
 # ============================================
@@ -386,18 +476,22 @@ def construire_query_pubmed(
 @st.cache_data(show_spinner=False)
 def pubmed_search_ids(query: str, max_results: int = 50):
     """Recherche les PMIDs correspondant à une requête PubMed."""
-    params = {
-        "db": "pubmed",
-        "term": query,
-        "retmax": max_results,
-        "retmode": "json"
-    }
+    try:
+        params = {
+            "db": "pubmed",
+            "term": query,
+            "retmax": max_results,
+            "retmode": "json"
+        }
 
-    r = requests.get(f"{BASE_EUTILS}/esearch.fcgi", params=params, timeout=20)
-    r.raise_for_status()
-    data = r.json()
+        r = requests.get(f"{BASE_EUTILS}/esearch.fcgi", params=params, timeout=20)
+        r.raise_for_status()
+        data = r.json()
 
-    return data.get("esearchresult", {}).get("idlist", [])
+        return data.get("esearchresult", {}).get("idlist", [])
+    except Exception as e:
+        st.error(f"❌ Erreur recherche PubMed: {e}")
+        return []
 
 
 @st.cache_data(show_spinner=False)
@@ -406,59 +500,63 @@ def pubmed_fetch_metadata_and_abstracts(pmids):
     if not pmids:
         return []
 
-    params = {
-        "db": "pubmed",
-        "id": ",".join(pmids),
-        "retmode": "xml"
-    }
+    try:
+        params = {
+            "db": "pubmed",
+            "id": ",".join(pmids),
+            "retmode": "xml"
+        }
 
-    r = requests.get(f"{BASE_EUTILS}/efetch.fcgi", params=params, timeout=30)
-    r.raise_for_status()
+        r = requests.get(f"{BASE_EUTILS}/efetch.fcgi", params=params, timeout=30)
+        r.raise_for_status()
 
-    root = ET.fromstring(r.content)
-    results = []
+        root = ET.fromstring(r.content)
+        results = []
 
-    for article in root.findall('.//PubmedArticle'):
-        pmid_elem = article.find('.//PMID')
-        pmid = pmid_elem.text if pmid_elem is not None else None
+        for article in root.findall('.//PubmedArticle'):
+            pmid_elem = article.find('.//PMID')
+            pmid = pmid_elem.text if pmid_elem is not None else None
 
-        title_elem = article.find('.//ArticleTitle')
-        title = ''.join(title_elem.itertext()) if title_elem is not None else "Titre non disponible"
-        title = nettoyer_titre(title)
+            title_elem = article.find('.//ArticleTitle')
+            title = ''.join(title_elem.itertext()) if title_elem is not None else "Titre non disponible"
+            title = nettoyer_titre(title)
 
-        journal_elem = article.find('.//Journal/Title')
-        journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
+            journal_elem = article.find('.//Journal/Title')
+            journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
 
-        year_elem = article.find('.//PubDate/Year')
-        year = year_elem.text if year_elem is not None else "N/A"
+            year_elem = article.find('.//PubDate/Year')
+            year = year_elem.text if year_elem is not None else "N/A"
 
-        doi = None
-        pmcid = None
-        for aid in article.findall('.//ArticleId'):
-            if aid.get('IdType') == 'doi':
-                doi = aid.text
-            if aid.get('IdType') == 'pmc':
-                pmcid = aid.text
+            doi = None
+            pmcid = None
+            for aid in article.findall('.//ArticleId'):
+                if aid.get('IdType') == 'doi':
+                    doi = aid.text
+                if aid.get('IdType') == 'pmc':
+                    pmcid = aid.text
 
-        abstract_texts = []
-        for abst in article.findall('.//Abstract/AbstractText'):
-            part = ''.join(abst.itertext())
-            if part:
-                abstract_texts.append(part.strip())
+            abstract_texts = []
+            for abst in article.findall('.//Abstract/AbstractText'):
+                part = ''.join(abst.itertext())
+                if part:
+                    abstract_texts.append(part.strip())
 
-        abstract = nettoyer_abstract("\n\n".join(abstract_texts))
+            abstract = nettoyer_abstract("\n\n".join(abstract_texts))
 
-        results.append({
-            "pmid": pmid,
-            "title_en": title,
-            "journal": journal,
-            "year": year,
-            "doi": doi,
-            "pmcid": pmcid,
-            "abstract_en": abstract
-        })
+            results.append({
+                "pmid": pmid,
+                "title_en": title,
+                "journal": journal,
+                "year": year,
+                "doi": doi,
+                "pmcid": pmcid,
+                "abstract_en": abstract
+            })
 
-    return results
+        return results
+    except Exception as e:
+        st.error(f"❌ Erreur récupération métadonnées: {e}")
+        return []
 
 
 # ============================================
@@ -518,178 +616,9 @@ def fetch_pdf_from_unpaywall(doi, email):
         return None, f"Unpaywall erreur: {e}"
 
 
-def fetch_pdf_from_pmc_ftp(pmcid):
-    """Tente de récupérer le PDF depuis le serveur FTP de PMC."""
-    if not pmcid:
-        return None, "Pas de PMCID"
-
-    try:
-        clean_id = _clean_pmcid(pmcid)
-
-        if len(clean_id) < 2:
-            return None, "PMCID invalide"
-
-        subdir_options = []
-
-        if len(clean_id) >= 4:
-            subdir_options.append((clean_id[:2], clean_id[2:4]))
-
-        subdir_options.append((clean_id[:2], "00"))
-
-        if len(clean_id) >= 1:
-            subdir_options.append(("0" + clean_id[0], clean_id[1:3] if len(clean_id) >= 3 else "00"))
-
-        for subdir1, subdir2 in subdir_options:
-            ftp_url = f"ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/{subdir1}/{subdir2}/PMC{clean_id}.tar.gz"
-
-            try:
-                r = requests.get(ftp_url, timeout=30)
-                if r.status_code == 200:
-                    tar_buffer = BytesIO(r.content)
-                    with tarfile.open(fileobj=tar_buffer, mode='r:gz') as tar:
-                        for member in tar.getmembers():
-                            if member.name.endswith('.pdf'):
-                                pdf_file = tar.extractfile(member)
-                                if pdf_file:
-                                    return pdf_file.read(), None
-            except Exception:
-                continue
-
-        return None, "PMC FTP: PDF non trouvé"
-
-    except Exception as e:
-        return None, f"PMC FTP erreur: {e}"
-
-
-def fetch_pdf_from_pmc_web(pmcid):
-    """Tente de récupérer le PDF depuis le site web de PMC."""
-    if not pmcid:
-        return None, "Pas de PMCID"
-
-    try:
-        clean_id = _clean_pmcid(pmcid)
-
-        urls = [
-            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf/",
-            f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{clean_id}/pdf",
-            f"https://europepmc.org/articles/PMC{clean_id}?pdf=render",
-        ]
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        for url in urls:
-            try:
-                r = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
-                if r.status_code == 200 and "application/pdf" in r.headers.get("Content-Type", ""):
-                    return r.content, None
-            except Exception:
-                continue
-
-        return None, "PMC Web: pas de PDF disponible"
-
-    except Exception as e:
-        return None, f"PMC Web erreur: {e}"
-
-
-def fetch_pdf_from_pubmed_central(pmcid):
-    """Essaie de récupérer le PDF via PMC Central API."""
-    if not pmcid:
-        return None, "Pas de PMCID"
-
-    try:
-        clean_id = _clean_pmcid(pmcid)
-        api_url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=PMC{clean_id}"
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(api_url, headers=headers, timeout=20)
-
-        if r.status_code != 200:
-            return None, f"PMC API: HTTP {r.status_code}"
-
-        try:
-            root = ET.fromstring(r.content)
-
-            for link in root.findall('.//link'):
-                href = link.get('href', '')
-                format_attr = link.get('format', '')
-
-                if 'pdf' in format_attr.lower() or href.endswith('.pdf'):
-                    r2 = requests.get(href, headers=headers, timeout=30)
-                    if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
-                        return r2.content, None
-
-        except ET.ParseError:
-            pass
-
-        return None, "PMC API: PDF non trouvé"
-
-    except Exception as e:
-        return None, f"PMC API erreur: {e}"
-
-
-def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
-    """Tente de récupérer le PDF depuis Europe PMC."""
-    if not pmid and not pmcid:
-        return None, "Pas de PMID ni PMCID"
-
-    try:
-        identifier = f"PMC{_clean_pmcid(pmcid)}" if pmcid else pmid
-        eu_url = f"https://europepmc.org/api/fulltextRepo?pmid={identifier}"
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(eu_url, headers=headers, timeout=30)
-
-        if r.status_code != 200:
-            return None, f"EuropePMC: HTTP {r.status_code}"
-
-        try:
-            root = ET.fromstring(r.content)
-            pdf_link = root.find('.//link[@format="pdf"]')
-
-            if pdf_link is not None and pdf_link.get('href'):
-                pdf_url = pdf_link.get('href')
-                r2 = requests.get(pdf_url, headers=headers, timeout=30)
-
-                if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
-                    return r2.content, None
-
-        except ET.ParseError:
-            pass
-
-        return None, "EuropePMC: PDF non trouvé"
-
-    except Exception as e:
-        return None, f"EuropePMC erreur: {e}"
-
-
 def fetch_pdf_cascade(pmid, doi, pmcid, unpaywall_email, utiliser_scihub=False):
     """Cascade optimisée de récupération PDF avec multiples sources."""
     reasons = {}
-
-    if pmcid:
-        pdf, err = fetch_pdf_from_pubmed_central(pmcid)
-        if pdf:
-            return pdf, f"PMC API (PMC{_clean_pmcid(pmcid)})"
-        reasons["PMC_API"] = err
-    else:
-        reasons["PMC_API"] = "Pas de PMCID"
-
-    if pmcid:
-        pdf, err = fetch_pdf_from_pmc_web(pmcid)
-        if pdf:
-            return pdf, f"PMC Web (PMC{_clean_pmcid(pmcid)})"
-        reasons["PMC_Web"] = err
-
-    if pmcid:
-        pdf, err = fetch_pdf_from_pmc_ftp(pmcid)
-        if pdf:
-            return pdf, f"PMC FTP (PMC{_clean_pmcid(pmcid)})"
-        reasons["PMC_FTP"] = err
-
-    pdf, err = fetch_pdf_from_europe_pmc(pmid, pmcid)
-    if pdf:
-        return pdf, "EuropePMC"
-    reasons["EuropePMC"] = err
 
     if doi:
         pdf, err = fetch_pdf_from_unpaywall(doi, unpaywall_email)
@@ -704,36 +633,6 @@ def fetch_pdf_cascade(pmid, doi, pmcid, unpaywall_email, utiliser_scihub=False):
         msg += f"  • {source}: {reason}\n"
 
     return None, msg.strip()
-
-
-def extract_with_pymupdf(pdf_content: bytes) -> str:
-    """Extraction via PyMuPDF (meilleur moteur)."""
-    try:
-        import fitz
-    except ImportError:
-        return ""
-
-    try:
-        doc = fitz.open(stream=pdf_content, filetype="pdf")
-        pages = min(len(doc), 20)
-        return "\n\n".join(doc.load_page(i).get_text("text") for i in range(pages))
-    except Exception:
-        return ""
-
-
-def extract_with_pdfplumber(pdf_content: bytes) -> str:
-    """Extraction via pdfplumber."""
-    try:
-        import pdfplumber
-    except ImportError:
-        return ""
-
-    try:
-        with pdfplumber.open(BytesIO(pdf_content)) as pdf:
-            pages = min(len(pdf.pages), 20)
-            return "\n\n".join(pdf.pages[i].extract_text() or "" for i in range(pages))
-    except Exception:
-        return ""
 
 
 def extract_with_pypdf(pdf_content: bytes) -> str:
@@ -755,21 +654,10 @@ def extract_with_pypdf(pdf_content: bytes) -> str:
 
 
 def extract_text_from_pdf(pdf_content: bytes):
-    """Essaie plusieurs moteurs successivement avec fallback."""
-    txt = extract_with_pymupdf(pdf_content)
-    if len(txt) > 500:
-        return nettoyer_texte_pdf(txt), "pymupdf"
-
-    txt = extract_with_pdfplumber(pdf_content)
-    if len(txt) > 500:
-        return nettoyer_texte_pdf(txt), "pdfplumber"
-
+    """Extraction de texte PDF."""
     txt = extract_with_pypdf(pdf_content)
-    if len(txt) > 500:
-        return nettoyer_texte_pdf(txt), "pypdf"
-
     if len(txt) > 100:
-        return nettoyer_texte_pdf(txt), "extraction_partielle"
+        return nettoyer_texte_pdf(txt), "pypdf"
 
     return "", "echec_extraction"
 
@@ -827,14 +715,15 @@ with st.sidebar:
     if mode_recherche == "Par mots-clés":
         mots_cles_fr = st.text_input(
             "Mots-clés",
-            placeholder="mot-clés"
+            placeholder="diabète, hypertension..."
         )
 
         if mots_cles_fr.strip():
             try:
-                trad_preview = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                st.caption("Traduction EN pour PubMed :")
-                st.code(trad_preview)
+                with st.spinner("Traduction des mots-clés..."):
+                    trad_preview = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+                    st.caption("Traduction EN pour PubMed :")
+                    st.code(trad_preview)
             except Exception as e:
                 st.warning(f"Erreur traduction mots-clés: {e}")
 
@@ -843,22 +732,26 @@ with st.sidebar:
         journaux_dispo = SPECIALITES[specialite]["journaux"]
 
         choix_journaux = st.multiselect(
-            "Journaux à inclure",
-            journaux_dispo,
-            default=journaux_dispo
+            "Journaux à inclure (laisser vide = tous)",
+            journaux_dispo
         )
+        
+        # Si aucun journal sélectionné, utiliser tous les journaux
+        if not choix_journaux:
+            choix_journaux = journaux_dispo
 
         inclure_keywords = st.checkbox("Ajouter des mots-clés supplémentaires")
         if inclure_keywords:
             mots_cles_fr = st.text_input(
                 "Mots-clés supplémentaires",
-                placeholder="mot-clés"
+                placeholder="diabète, hypertension..."
             )
             if mots_cles_fr.strip():
                 try:
-                    trad_preview = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                    st.caption("Traduction EN pour PubMed :")
-                    st.code(trad_preview)
+                    with st.spinner("Traduction des mots-clés..."):
+                        trad_preview = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+                        st.caption("Traduction EN pour PubMed :")
+                        st.code(trad_preview)
                 except Exception as e:
                     st.warning(f"Erreur traduction mots-clés: {e}")
 
@@ -884,15 +777,13 @@ with st.sidebar:
 
     nb_max = st.slider("Nombre max d'articles", 10, 200, 50, 10)
 
-    utiliser_scihub = st.checkbox("Activer Sci-Hub (non implémenté)", value=False)
-
     lancer = st.button("🔍 Lancer la recherche", type="primary", use_container_width=True)
 
     st.markdown("---")
     st.subheader("🕘 Historique des recherches")
     if st.session_state.historique:
-        for h in st.session_state.historique[-20:]:
-            st.markdown(f"- **{h['title_fr']}** ({h['journal']} {h['year']}) – PMID {h['pmid']}")
+        for h in st.session_state.historique[-10:]:
+            st.markdown(f"- **{h.get('title_fr', 'Sans titre')}** ({h.get('journal', 'N/A')} {h.get('year', 'N/A')}) – PMID {h.get('pmid', 'N/A')}")
 
 
 # ============================================
@@ -900,43 +791,83 @@ with st.sidebar:
 # ============================================
 
 if lancer:
+    st.info("🔍 Recherche lancée...")
+    
     st.session_state.articles = []
     st.session_state.details = {}
 
     if mode_recherche == "Par mots-clés" and not mots_cles_fr.strip():
-        st.error("Merci de saisir au moins un mot-clé.")
+        st.error("❌ Merci de saisir au moins un mot-clé.")
     else:
-        with st.spinner("Recherche PubMed..."):
-            try:
-                if mode_recherche == "Par mots-clés":
-                    mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                    base_query = mots_cles_en
+        try:
+            # Construction de la requête
+            if mode_recherche == "Par mots-clés":
+                st.info("📝 Traduction des mots-clés...")
+                mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+                base_query = mots_cles_en
+                if st.session_state.debug:
+                    st.write(f"🔍 Requête base (mots-clés): {base_query}")
 
-                else:
-                    base_query = SPECIALITES[specialite]["mesh_terms"]
+            else:
+                base_query = SPECIALITES[specialite]["mesh_terms"]
+                if st.session_state.debug:
+                    st.write(f"🔍 Requête base (spécialité): {base_query}")
 
-                    if choix_journaux:
-                        journaux_query = " OR ".join([f'"{j}"[Journal]' for j in choix_journaux])
-                        base_query += f" AND ({journaux_query})"
+                if choix_journaux:
+                    journaux_query = " OR ".join([f'"{j}"[Journal]' for j in choix_journaux])
+                    base_query += f" AND ({journaux_query})"
+                    if st.session_state.debug:
+                        st.write(f"📚 Journaux ajoutés: {journaux_query}")
 
-                    if inclure_keywords and mots_cles_fr.strip():
-                        mots_cles_en_sup = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                        base_query += f" AND ({mots_cles_en_sup})"
+                if inclure_keywords and mots_cles_fr.strip():
+                    st.info("📝 Traduction des mots-clés supplémentaires...")
+                    mots_cles_en_sup = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+                    base_query += f" AND ({mots_cles_en_sup})"
+                    if st.session_state.debug:
+                        st.write(f"🔍 Mots-clés supplémentaires: {mots_cles_en_sup}")
 
-                query = construire_query_pubmed(
-                    base_query,
-                    date_debut,
-                    date_fin,
-                    langue_code=langue_code,
-                    type_etude=type_etude
-                )
+            # Construction requête complète
+            query = construire_query_pubmed(
+                base_query,
+                date_debut,
+                date_fin,
+                langue_code=langue_code,
+                type_etude=type_etude
+            )
 
-                pmids = pubmed_search_ids(query, max_results=nb_max)
+            if st.session_state.debug:
+                st.info(f"🔍 Requête PubMed finale:\n```\n{query}\n```")
 
-                meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
+            # Recherche PMIDs
+            st.info("🔍 Recherche des articles sur PubMed...")
+            pmids = pubmed_search_ids(query, max_results=nb_max)
+            
+            if not pmids:
+                st.warning("⚠️ Aucun article trouvé avec ces critères.")
+                st.stop()
+            
+            st.success(f"✅ {len(pmids)} articles trouvés")
 
-                articles = []
-                for art in meta_list:
+            # Récupération métadonnées
+            st.info("📥 Récupération des métadonnées...")
+            meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
+            
+            if not meta_list:
+                st.warning("⚠️ Impossible de récupérer les métadonnées.")
+                st.stop()
+            
+            st.success(f"✅ {len(meta_list)} métadonnées récupérées")
+
+            # Traduction titres + abstracts
+            st.info("🌐 Traduction des titres et résumés...")
+            articles = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for idx, art in enumerate(meta_list):
+                try:
+                    status_text.text(f"Traduction de l'article {idx + 1}/{len(meta_list)}...")
+                    
                     art["title_fr"] = traduire_texte_court_cache(
                         art["title_en"], MODE_TRAD, DEEPL_KEY, G_KEY
                     )
@@ -956,171 +887,60 @@ if lancer:
                         "title_fr": art["title_fr"],
                         "journal": art["journal"],
                         "year": art["year"],
-                        "doi": art["doi"],
-                        "pmcid": art["pmcid"]
+                        "doi": art.get("doi"),
+                        "pmcid": art.get("pmcid")
                     })
+                    
+                    progress_bar.progress((idx + 1) / len(meta_list))
+                    
+                    # Petit délai pour éviter le rate limiting
+                    import time
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    st.warning(f"⚠️ Erreur traduction article {art.get('pmid')}: {e}")
+                    # Ajouter l'article même si la traduction échoue
+                    art["title_fr"] = art["title_en"]
+                    art["abstract_fr"] = art["abstract_en"]
+                    articles.append(art)
 
-                st.session_state.articles = articles
+            status_text.empty()
+            st.session_state.articles = articles
+            st.success(f"✅ {len(articles)} articles traduits avec succès!")
 
-            except Exception as e:
-                st.error(f"Erreur PubMed : {e}")
+        except Exception as e:
+            st.error(f"❌ Erreur globale : {e}")
+            if st.session_state.debug:
+                import traceback
+                st.code(traceback.format_exc())
 
 
 # ============================================
-# PARTIE 9 — AFFICHAGE DES ARTICLES & ACTIONS
+# PARTIE 9 — AFFICHAGE DES ARTICLES
 # ============================================
 
 total_articles = len(st.session_state.articles)
-pdf_recuperes = sum(1 for pmid in st.session_state.details if st.session_state.details[pmid].get("texte_fr"))
-pdf_echecs = sum(1 for pmid in st.session_state.details if st.session_state.details[pmid].get("erreur"))
-
-col_stat1, col_stat2, col_stat3 = st.columns(3)
-with col_stat1:
-    st.metric("Articles trouvés", total_articles)
-with col_stat2:
-    st.metric("PDFs récupérés", pdf_recuperes)
-with col_stat3:
-    if pdf_recuperes + pdf_echecs > 0:
-        taux = (pdf_recuperes / (pdf_recuperes + pdf_echecs)) * 100
-        st.metric("Taux de succès", f"{taux:.0f}%")
-
-st.markdown("---")
 
 if total_articles > 0:
-    col_mass1, col_mass2 = st.columns(2)
-    with col_mass1:
-        lancer_selection = st.button("📥 Extraire + traduire les articles sélectionnés")
-    with col_mass2:
-        lancer_tout = st.button("📥 Extraire + traduire TOUS les articles")
+    st.success(f"📊 {total_articles} articles disponibles")
+    
+    for art in st.session_state.articles:
+        pmid = art["pmid"]
+
+        with st.expander(f"{art['title_fr']} ({art['journal']} {art['year']}) - PMID {pmid}"):
+
+            st.markdown(f"**Titre original (EN) :** *{art['title_en']}*")
+            st.write(f"**Journal :** {art['journal']} ({art['year']})")
+            st.write(f"**PMID :** {pmid}")
+            st.write(f"**DOI :** {art.get('doi') or 'N/A'}")
+            st.write(f"**PMCID :** {art.get('pmcid') or 'N/A'}")
+
+            if art["abstract_fr"]:
+                st.markdown("### 🧾 Abstract (FR)")
+                st.write(art["abstract_fr"])
+
+            if art["abstract_en"]:
+                with st.expander("Voir abstract original (EN)"):
+                    st.write(art["abstract_en"])
 else:
-    lancer_selection = False
-    lancer_tout = False
-
-
-# ============================================
-# PARTIE 10 — EXTRACTION / TRADUCTION PDF
-# ============================================
-
-def traiter_pdf_pour_article(art):
-    """Pipeline complet pour un article : PDF → extraction → traduction."""
-    pmid = art["pmid"]
-
-    if pmid not in st.session_state.details:
-        st.session_state.details[pmid] = {
-            "texte_en": None,
-            "texte_fr": None,
-            "source_pdf": None,
-            "methode_extraction": None,
-            "erreur": None,
-        }
-
-    det = st.session_state.details[pmid]
-
-    pdf_bytes, source = fetch_pdf_cascade(
-        pmid, art.get("doi"), art.get("pmcid"),
-        UNPAYWALL_EMAIL, utiliser_scihub
-    )
-
-    if not pdf_bytes:
-        det["erreur"] = source
-        st.error(source)
-        return
-
-    det["source_pdf"] = source
-
-    texte_en, methode = extract_text_from_pdf(pdf_bytes)
-    if len(texte_en) < 200:
-        det["erreur"] = f"Texte extrait insuffisant ({len(texte_en)} caractères) - Méthode: {methode}"
-        st.warning(det["erreur"])
-        return
-
-    det["methode_extraction"] = methode
-    texte_en_tronque = tronquer(texte_en)
-    det["texte_en"] = texte_en_tronque
-
-    st.info("Traduction du PDF en cours...")
-    try:
-        det["texte_fr"] = traduire_long_texte_cache(
-            texte_en_tronque, MODE_TRAD, DEEPL_KEY, G_KEY
-        )
-        st.success(f"✅ PDF extrait et traduit avec succès ({len(texte_en)} caractères)")
-    except Exception as e:
-        det["texte_fr"] = texte_en_tronque
-        det["erreur"] = f"Traduction échouée: {e}"
-        st.error(det["erreur"])
-
-
-if lancer_tout:
-    with st.spinner("Extraction + traduction de tous les articles..."):
-        for art in st.session_state.articles:
-            traiter_pdf_pour_article(art)
-
-if lancer_selection:
-    with st.spinner("Extraction + traduction des articles sélectionnés..."):
-        selection = [a for a in st.session_state.articles if a.get("selected")]
-        if not selection:
-            st.warning("Aucun article sélectionné.")
-        else:
-            for art in selection:
-                traiter_pdf_pour_article(art)
-
-
-for art in st.session_state.articles:
-    pmid = art["pmid"]
-
-    if pmid not in st.session_state.details:
-        st.session_state.details[pmid] = {
-            "texte_en": None,
-            "texte_fr": None,
-            "source_pdf": None,
-            "methode_extraction": None,
-            "erreur": None,
-        }
-
-    det = st.session_state.details[pmid]
-
-    with st.expander(f"{art['title_fr']} ({art['journal']} {art['year']}) - PMID {pmid}"):
-
-        st.markdown(f"**Titre original (EN) :** *{art['title_en']}*")
-        st.write(f"**Journal :** {art['journal']} ({art['year']})")
-        st.write(f"**PMID :** {pmid}")
-        st.write(f"**DOI :** {art.get('doi') or 'N/A'}")
-        st.write(f"**PMCID :** {art.get('pmcid') or 'N/A'}")
-
-        art["selected"] = st.checkbox("Sélectionner pour extraction/traduction", key=f"sel_{pmid}")
-
-        if art["abstract_fr"]:
-            st.markdown("### 🧾 Abstract (FR)")
-            st.text(art["abstract_fr"])
-
-        if art["abstract_en"]:
-            with st.expander("Voir abstract original (EN)"):
-                st.text(art["abstract_en"])
-
-        st.markdown("---")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button(f"📥 Récupérer PDF + traduire (PMID {pmid})", key=f"btn_{pmid}"):
-                with st.spinner("Téléchargement et extraction du PDF..."):
-                    traiter_pdf_pour_article(art)
-
-        with col2:
-            if det["texte_fr"]:
-                st.write(f"**Source PDF :** {det['source_pdf']}")
-                st.write(f"**Méthode extraction :** {det['methode_extraction']}")
-                st.text(det["texte_fr"][:800])
-
-                export_txt = build_notebooklm_export(art, det["texte_fr"])
-                st.markdown(
-                    bouton_download_ios_safe(
-                        "📥 Export NotebookLM",
-                        export_txt,
-                        f"notebooklm_pmid_{pmid}.txt"
-                    ),
-                    unsafe_allow_html=True
-                )
-
-            elif det["erreur"]:
-                st.error(det["erreur"])
+    st.info("👈 Utilisez le menu latéral pour lancer une recherche")
