@@ -145,7 +145,7 @@ def nettoyer_titre(titre: str) -> str:
         r'\s*\(see\s+more\)\s*',
         r'\s*`\(\s*see\s+more\s*\)`\s*',
         r'\s*voir\s+plus\s*',
-        r'\s*
+        r'\s*'
 
 \[voir\s+plus\]
 
