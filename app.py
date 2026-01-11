@@ -137,20 +137,20 @@ def nettoyer_titre(titre: str) -> str:
 
     patterns = [
         r'\s*see\s+more\s*',
-        r'\s*'
+        r'
 
-\[see\s+more\]'
+\[see\s+more\]
 
-\s*',
-        r'\s*\(see\s+more\)\s*',
-        r'\s*`\(\s*see\s+more\s*\)`\s*',
+',
+        r'\(see\s+more\)',
+        r'`\(\s*see\s+more\s*\)`',
         r'\s*voir\s+plus\s*',
-        r'\s*'
+        r'
 
 \[voir\s+plus\]
 
-\s*',
-        r'\s*\(voir\s+plus\)\s*',
+',
+        r'\(voir\s+plus\)',
         r'\s*'  # motif neutre mais valide
     ]
 
@@ -229,6 +229,7 @@ def tronquer(texte: str, max_len: int = 12000) -> str:
 def maintenant_str() -> str:
     """Retourne la date/heure actuelle au format français."""
     return datetime.now().strftime("%d/%m/%Y %H:%M")
+
 # ============================================
 # PARTIE 3 — TRADUCTION (DEEPL / GEMINI)
 # ============================================
