@@ -1,69 +1,138 @@
 # ============================================
-# PARTIE 1 — IMPORTS & CONFIGURATION GÉNÉRALE
+# PARTIE 4 — CONFIGURATION DES SPÉCIALITÉS
 # ============================================
 
-import streamlit as st
-import requests
-import xml.etree.ElementTree as ET
-from datetime import date, datetime
-from io import BytesIO
-import tarfile
+"""
+Ce module définit les spécialités médicales disponibles dans l'application,
+ainsi que leurs journaux associés et les termes MeSH utilisés pour PubMed.
+
+Tu peux enrichir ce fichier à volonté.
+"""
+
+SPECIALITES = {
+    "Cardiologie": {
+        "journaux": [
+            "Circulation",
+            "European Heart Journal",
+            "Journal of the American College of Cardiology",
+            "Hypertension",
+            "Heart"
+        ],
+        "mesh_terms": "Cardiology[MeSH Terms] OR Cardiovascular Diseases[MeSH Terms]"
+    },
+
+    "Gynécologie / Obstétrique": {
+        "journaux": [
+            "Obstetrics and Gynecology",
+            "American Journal of Obstetrics and Gynecology",
+            "BJOG",
+            "Human Reproduction"
+        ],
+        "mesh_terms": "Gynecology[MeSH Terms] OR Obstetrics[MeSH Terms]"
+    },
+
+    "Neurologie": {
+        "journaux": [
+            "Neurology",
+            "Brain",
+            "Annals of Neurology",
+            "Stroke"
+        ],
+        "mesh_terms": "Neurology[MeSH Terms] OR Nervous System Diseases[MeSH Terms]"
+    },
+
+    "Endocrinologie": {
+        "journaux": [
+            "Journal of Clinical Endocrinology & Metabolism",
+            "Diabetes Care",
+            "Diabetologia",
+            "Thyroid"
+        ],
+        "mesh_terms": "Endocrinology[MeSH Terms] OR Endocrine System Diseases[MeSH Terms]"
+    },
+
+    "Pneumologie": {
+        "journaux": [
+            "American Journal of Respiratory and Critical Care Medicine",
+            "Chest",
+            "Thorax",
+            "European Respiratory Journal"
+        ],
+        "mesh_terms": "Pulmonary Medicine[MeSH Terms] OR Respiratory Tract Diseases[MeSH Terms]"
+    },
+
+    "Oncologie": {
+        "journaux": [
+            "Journal of Clinical Oncology",
+            "Cancer",
+            "The Lancet Oncology",
+            "Annals of Oncology"
+        ],
+        "mesh_terms": "Oncology[MeSH Terms] OR Neoplasms[MeSH Terms]"
+    },
+
+    "Néphrologie": {
+        "journaux": [
+            "Journal of the American Society of Nephrology",
+            "Kidney International",
+            "Nephrology Dialysis Transplantation"
+        ],
+        "mesh_terms": "Nephrology[MeSH Terms] OR Kidney Diseases[MeSH Terms]"
+    },
+
+    "Hématologie": {
+        "journaux": [
+            "Blood",
+            "Haematologica",
+            "Leukemia",
+            "Journal of Thrombosis and Haemostasis"
+        ],
+        "mesh_terms": "Hematology[MeSH Terms] OR Hematologic Diseases[MeSH Terms]"
+    }
+}
+# ============================================
+# PARTIE 2 — FONCTIONS UTILITAIRES TEXTE
+# ============================================
+
 import re
-import pypdf
-import google.generativeai as genai
-import base64
-import locale
-
-# Tenter de mettre la locale en français (pour les mois)
-try:
-    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
-except Exception:
-    pass
-
-# Configuration de la page
-st.set_page_config(
-    page_title="Veille Médicale Pro",
-    page_icon="🩺",
-    layout="wide"
-)
-
-st.title("🩺 Veille Médicale Professionnelle")
-
-# Récupération des clés
-try:
-    G_KEY = st.secrets["GEMINI_KEY"]
-except Exception:
-    st.error("⚠️ Clé GEMINI_KEY manquante dans st.secrets")
-    st.stop()
-
-DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
-UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
-
-MODE_TRAD = "deepl" if DEEPL_KEY else "gemini"
-
-# Session state
-if "articles" not in st.session_state:
-    st.session_state.articles = []
-if "details" not in st.session_state:
-    st.session_state.details = {}
-if "debug" not in st.session_state:
-    st.session_state.debug = False
-if "historique" not in st.session_state:
-    st.session_state.historique = []
+from datetime import datetime
+import streamlit as st
 
 
-# ============================================
-# PARTIE 2 — FONCTIONS UTILITAIRES
-# ============================================
+# ------------------------------------------------
+# 🔍 Validation automatique des motifs regex
+# ------------------------------------------------
 
-def maintenant_str() -> str:
-    return datetime.now().strftime("%d/%m/%Y %H:%M")
+def valider_regex(patterns: list, contexte: str = "Motifs regex"):
+    """
+    Vérifie que chaque motif regex est valide.
+    Affiche les erreurs dans Streamlit si nécessaire.
+    """
+    erreurs = []
+    for pat in patterns:
+        try:
+            re.compile(pat)
+        except re.error as e:
+            erreurs.append((pat, str(e)))
+
+    if erreurs:
+        st.error(f"❌ Erreurs détectées dans {contexte} :")
+        for pat, err in erreurs:
+            st.write(f"- Motif : `{pat}` → **{err}**")
+    else:
+        st.success(f"✔️ Tous les motifs regex de {contexte} sont valides.")
+
+
+# ------------------------------------------------
+# 🧼 Nettoyage des titres
+# ------------------------------------------------
 
 def nettoyer_titre(titre: str) -> str:
     """Nettoie le titre d'article : balises HTML, mentions 'see more', espaces."""
     if not titre:
         return "Titre non disponible"
 
+    # Supprimer balises HTML
     titre = re.sub(r'<[^>]+>', '', titre)
 
     patterns = [
@@ -74,7 +143,7 @@ def nettoyer_titre(titre: str) -> str:
 
 \s*',
         r'\s*\(see\s+more\)\s*',
-        r'\s*`\(see\s+more\)`\s*',
+        r'\s*`\(\s*see\s+more\s*\)`\s*',
         r'\s*voir\s+plus\s*',
         r'\s*
 
@@ -82,12 +151,23 @@ def nettoyer_titre(titre: str) -> str:
 
 \s*',
         r'\s*\(voir\s+plus\)\s*',
+        r'\s*'  # motif neutre mais valide
     ]
+
+    # Vérification automatique
+    valider_regex(patterns, "nettoyer_titre()")
+
     for pat in patterns:
         titre = re.sub(pat, '', titre, flags=re.IGNORECASE)
 
+    # Nettoyage espaces multiples
     titre = re.sub(r'\s+', ' ', titre)
     return titre.strip()
+
+
+# ------------------------------------------------
+# 🧼 Nettoyage des abstracts
+# ------------------------------------------------
 
 def nettoyer_abstract(texte: str) -> str:
     """Nettoie un abstract : supprime balises, espaces, artefacts."""
@@ -99,6 +179,11 @@ def nettoyer_abstract(texte: str) -> str:
     texte = re.sub(r'\s+', ' ', texte)
 
     return texte.strip()
+
+
+# ------------------------------------------------
+# 🧼 Nettoyage du texte PDF
+# ------------------------------------------------
 
 def nettoyer_texte_pdf(texte: str) -> str:
     """Nettoyage avancé du texte extrait des PDF."""
@@ -115,12 +200,21 @@ def nettoyer_texte_pdf(texte: str) -> str:
         r'All rights reserved',
         r'This article is protected by copyright',
     ]
+
+    valider_regex(artefacts, "nettoyer_texte_pdf()")
+
     for pat in artefacts:
         texte = re.sub(pat, '', texte, flags=re.IGNORECASE)
 
     return texte.strip()
 
+
+# ------------------------------------------------
+# ✂️ Tronquage du texte
+# ------------------------------------------------
+
 def tronquer(texte: str, max_len: int = 12000) -> str:
+    """Tronque un texte trop long pour éviter surcharge de traduction."""
     if not texte:
         return texte
     if len(texte) <= max_len:
@@ -128,11 +222,29 @@ def tronquer(texte: str, max_len: int = 12000) -> str:
     return texte[:max_len] + "\n\n[Texte tronqué pour analyse]"
 
 
+# ------------------------------------------------
+# 🕒 Formatage date/heure
+# ------------------------------------------------
+
+def maintenant_str() -> str:
+    """Retourne la date/heure actuelle au format français."""
+    return datetime.now().strftime("%d/%m/%Y %H:%M")
 # ============================================
-# PARTIE 3 — TRADUCTION
+# PARTIE 3 — TRADUCTION (DEEPL / GEMINI)
 # ============================================
 
+import re
+import requests
+import google.generativeai as genai
+import streamlit as st
+
+
+# ------------------------------------------------
+# 🔤 Traduction via DeepL (chunk)
+# ------------------------------------------------
+
 def traduire_deepl_chunk(texte: str, api_key: str) -> str:
+    """Traduit un chunk de texte via DeepL."""
     url = "https://api-free.deepl.com/v2/translate"
     data = {
         "auth_key": api_key,
@@ -145,10 +257,17 @@ def traduire_deepl_chunk(texte: str, api_key: str) -> str:
     r.raise_for_status()
     return r.json()["translations"][0]["text"]
 
+
+# ------------------------------------------------
+# 🤖 Traduction via Gemini (chunk)
+# ------------------------------------------------
+
 def traduire_gemini_chunk(texte: str, g_key: str) -> str:
+    """Traduit un chunk de texte via Gemini."""
     try:
         genai.configure(api_key=g_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
+
         prompt = f"""Tu es un traducteur médical professionnel. Traduis le texte anglais suivant en français médical professionnel.
 
 CONSIGNES STRICTES:
@@ -161,6 +280,7 @@ TEXTE À TRADUIRE:
 {texte}
 
 TRADUCTION FRANÇAISE:"""
+
         resp = model.generate_content(prompt)
 
         if not resp or not hasattr(resp, 'text'):
@@ -169,23 +289,33 @@ TRADUCTION FRANÇAISE:"""
         trad = resp.text.strip()
         trad = trad.replace("**", "")
         trad = re.sub(r'^(Traduction\s*:?\s*)', '', trad, flags=re.IGNORECASE)
-        trad = nettoyer_titre(trad)
-        return trad
+        return trad.strip()
+
     except Exception as e:
         print(f"Erreur traduction Gemini: {e}")
         return texte
 
+
+# ------------------------------------------------
+# 📚 Traduction longue (avec découpage automatique)
+# ------------------------------------------------
+
 @st.cache_data(show_spinner=False)
-def traduire_long_texte_cache(texte: str,
-                              mode: str,
-                              deepl_key: str = None,
-                              g_key: str = None,
-                              chunk_size: int = 4000) -> str:
+def traduire_long_texte_cache(
+    texte: str,
+    mode: str,
+    deepl_key: str = None,
+    g_key: str = None,
+    chunk_size: int = 4000
+) -> str:
+    """Traduit un texte long en le découpant automatiquement."""
     texte = texte.strip()
     if not texte:
         return texte
+
     chunks = [texte[i:i+chunk_size] for i in range(0, len(texte), chunk_size)]
     trad_total = []
+
     for chunk in chunks:
         try:
             if mode == "deepl" and deepl_key:
@@ -196,25 +326,42 @@ def traduire_long_texte_cache(texte: str,
         except Exception as e:
             print(f"Erreur traduction chunk: {e}")
             trad_total.append(chunk)
+
     return "\n\n".join(trad_total)
 
+
+# ------------------------------------------------
+# 🧩 Traduction courte
+# ------------------------------------------------
+
 @st.cache_data(show_spinner=False)
-def traduire_texte_court_cache(texte: str,
-                               mode: str,
-                               deepl_key: str = None,
-                               g_key: str = None) -> str:
+def traduire_texte_court_cache(
+    texte: str,
+    mode: str,
+    deepl_key: str = None,
+    g_key: str = None
+) -> str:
+    """Traduit un texte court (titre, phrase)."""
     texte = texte.strip()
     if not texte:
         return texte
+
     if mode == "deepl" and deepl_key:
         return traduire_deepl_chunk(texte, deepl_key)
     else:
         return traduire_gemini_chunk(texte, g_key)
 
+
+# ------------------------------------------------
+# 🔎 Traduction des mots-clés pour PubMed
+# ------------------------------------------------
+
 @st.cache_data(show_spinner=False)
 def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
+    """Traduit des mots-clés FR → EN optimisés pour PubMed (MeSH si possible)."""
     genai.configure(api_key=g_key)
     model = genai.GenerativeModel("gemini-2.5-flash")
+
     prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
 
 CONSIGNES:
@@ -226,103 +373,129 @@ MOTS-CLÉS FRANÇAIS:
 {mots_cles_fr}
 
 TERMES ANGLAIS:"""
+
     resp = model.generate_content(prompt)
     return resp.text.strip()
-
-
 # ============================================
 # PARTIE 4 — PUBMED : RECHERCHE & MÉTADONNÉES
 # ============================================
 
-BASE_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+import requests
+import xml.etree.ElementTree as ET
+import streamlit as st
 
-# Spécialités médicales (extensible)
-SPECIALITES = {
-    "Cardiologie": {
-        "journaux": [
-            "Circulation",
-            "European Heart Journal",
-            "Journal of the American College of Cardiology",
-            "Hypertension",
-            "Heart"
-        ],
-        "mesh_terms": "Cardiology[MeSH Terms] OR Cardiovascular Diseases[MeSH Terms]"
-    },
-    "Gynécologie / Obstétrique": {
-        "journaux": [
-            "Obstetrics and Gynecology",
-            "American Journal of Obstetrics and Gynecology",
-            "BJOG",
-            "Human Reproduction"
-        ],
-        "mesh_terms": "Gynecology[MeSH Terms] OR Obstetrics[MeSH Terms]"
-    },
-    "Neurologie": {
-        "journaux": [
-            "Neurology",
-            "Brain",
-            "Annals of Neurology",
-            "Stroke"
-        ],
-        "mesh_terms": "Neurology[MeSH Terms] OR Nervous System Diseases[MeSH Terms]"
-    }
-}
+from config_specialites import SPECIALITES
+from utils_text import nettoyer_titre, nettoyer_abstract
 
-def construire_query_pubmed(mots_cles_en: str,
-                            date_debut,
-                            date_fin,
-                            langue_code: str = "",
-                            type_etude: str = "") -> str:
-    query = mots_cles_en.strip()
+
+# ------------------------------------------------
+# 🔧 Construction de la requête PubMed
+# ------------------------------------------------
+
+def construire_query_pubmed(
+    base_query: str,
+    date_debut,
+    date_fin,
+    langue_code: str = "",
+    type_etude: str = ""
+) -> str:
+    """
+    Construit une requête PubMed complète à partir :
+    - d'une base (mots-clés ou spécialité)
+    - d'un intervalle de dates
+    - d'un filtre de langue
+    - d'un type d'étude
+    """
+    query = base_query.strip()
+
+    # Filtre par dates
     if date_debut and date_fin:
-        query += f' AND ("{date_debut:%Y/%m/%d}"[Date - Publication] : "{date_fin:%Y/%m/%d}"[Date - Publication])'
+        query += (
+            f' AND ("{date_debut:%Y/%m/%d}"[Date - Publication] : '
+            f'"{date_fin:%Y/%m/%d}"[Date - Publication])'
+        )
+
+    # Filtre langue
     if langue_code:
         query += f' AND {langue_code}[lang]'
+
+    # Filtre type d'étude
     if type_etude:
         query += f' AND {type_etude}[pt]'
+
     return query
+
+
+# ------------------------------------------------
+# 🔎 Recherche PubMed (esearch)
+# ------------------------------------------------
+
+BASE_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
 @st.cache_data(show_spinner=False)
 def pubmed_search_ids(query: str, max_results: int = 50):
+    """
+    Recherche les PMIDs correspondant à une requête PubMed.
+    """
     params = {
         "db": "pubmed",
         "term": query,
         "retmax": max_results,
         "retmode": "json"
     }
+
     r = requests.get(f"{BASE_EUTILS}/esearch.fcgi", params=params, timeout=20)
     r.raise_for_status()
     data = r.json()
+
     return data.get("esearchresult", {}).get("idlist", [])
+
+
+# ------------------------------------------------
+# 📥 Récupération métadonnées + abstracts (efetch)
+# ------------------------------------------------
 
 @st.cache_data(show_spinner=False)
 def pubmed_fetch_metadata_and_abstracts(pmids):
+    """
+    Récupère les métadonnées et abstracts pour une liste de PMIDs.
+    Retourne une liste de dictionnaires.
+    """
     if not pmids:
         return []
+
     params = {
         "db": "pubmed",
         "id": ",".join(pmids),
         "retmode": "xml"
     }
+
     r = requests.get(f"{BASE_EUTILS}/efetch.fcgi", params=params, timeout=30)
     r.raise_for_status()
+
     root = ET.fromstring(r.content)
     results = []
 
     for article in root.findall('.//PubmedArticle'):
+
+        # PMID
         pmid_elem = article.find('.//PMID')
         pmid = pmid_elem.text if pmid_elem is not None else None
 
+        # Titre
         title_elem = article.find('.//ArticleTitle')
         title = ''.join(title_elem.itertext()) if title_elem is not None else "Titre non disponible"
         title = nettoyer_titre(title)
 
+        # Journal
         journal_elem = article.find('.//Journal/Title')
         journal = journal_elem.text if journal_elem is not None else "Journal non disponible"
 
+        # Année
         year_elem = article.find('.//PubDate/Year')
         year = year_elem.text if year_elem is not None else "N/A"
 
+        # DOI + PMCID
         doi = None
         pmcid = None
         for aid in article.findall('.//ArticleId'):
@@ -331,11 +504,13 @@ def pubmed_fetch_metadata_and_abstracts(pmids):
             if aid.get('IdType') == 'pmc':
                 pmcid = aid.text
 
+        # Abstract
         abstract_texts = []
         for abst in article.findall('.//Abstract/AbstractText'):
             part = ''.join(abst.itertext())
             if part:
                 abstract_texts.append(part.strip())
+
         abstract = nettoyer_abstract("\n\n".join(abstract_texts))
 
         results.append({
@@ -347,12 +522,25 @@ def pubmed_fetch_metadata_and_abstracts(pmids):
             "pmcid": pmcid,
             "abstract_en": abstract
         })
+
     return results
-
-
 # ============================================
 # PARTIE 5 — PDF : RÉCUPÉRATION & EXTRACTION
 # ============================================
+
+import requests
+import tarfile
+import xml.etree.ElementTree as ET
+from io import BytesIO
+import pypdf
+import streamlit as st
+
+from utils_text import nettoyer_texte_pdf
+
+
+# ------------------------------------------------
+# 🧹 Nettoyage PMCID
+# ------------------------------------------------
 
 def _clean_pmcid(pmcid: str) -> str:
     """Nettoie le PMCID en enlevant le préfixe PMC s'il existe."""
@@ -360,24 +548,34 @@ def _clean_pmcid(pmcid: str) -> str:
         return ""
     return pmcid.replace("PMC", "").strip()
 
+
+# ------------------------------------------------
+# 📥 Unpaywall
+# ------------------------------------------------
+
 def fetch_pdf_from_unpaywall(doi, email):
+    """Tente de récupérer un PDF via Unpaywall."""
     if not doi:
         return None, "Pas de DOI"
+
     try:
         url = f"https://api.unpaywall.org/v2/{doi}"
         params = {"email": email}
         r = requests.get(url, params=params, timeout=20)
+
         if r.status_code == 404:
             return None, "Unpaywall: DOI inconnu"
         if r.status_code != 200:
             return None, f"Unpaywall HTTP {r.status_code}"
 
         data = r.json()
+
         if not data.get("is_oa"):
             return None, "Unpaywall: pas Open Access"
 
         headers = {"User-Agent": "Mozilla/5.0"}
 
+        # Meilleure source
         best = data.get("best_oa_location")
         if best and best.get("url_for_pdf"):
             pdf_url = best["url_for_pdf"]
@@ -385,6 +583,7 @@ def fetch_pdf_from_unpaywall(doi, email):
             if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
                 return r2.content, None
 
+        # Autres sources
         for loc in data.get("oa_locations", []):
             pdf_url = loc.get("url_for_pdf")
             if not pdf_url:
@@ -401,6 +600,11 @@ def fetch_pdf_from_unpaywall(doi, email):
     except Exception as e:
         return None, f"Unpaywall erreur: {e}"
 
+
+# ------------------------------------------------
+# 📥 PMC FTP
+# ------------------------------------------------
+
 def fetch_pdf_from_pmc_ftp(pmcid):
     """Tente de récupérer le PDF depuis le serveur FTP de PMC."""
     if not pmcid:
@@ -414,14 +618,14 @@ def fetch_pdf_from_pmc_ftp(pmcid):
 
         subdir_options = []
 
+        # Structure standard XX/YY
         if len(clean_id) >= 4:
-            subdir1 = clean_id[:2]
-            subdir2 = clean_id[2:4]
-            subdir_options.append((subdir1, subdir2))
+            subdir_options.append((clean_id[:2], clean_id[2:4]))
 
-        subdir1 = clean_id[:2]
-        subdir_options.append((subdir1, "00"))
+        # Structure fallback XX/00
+        subdir_options.append((clean_id[:2], "00"))
 
+        # Structure alternative
         if len(clean_id) >= 1:
             subdir_options.append(("0" + clean_id[0], clean_id[1:3] if len(clean_id) >= 3 else "00"))
 
@@ -446,6 +650,11 @@ def fetch_pdf_from_pmc_ftp(pmcid):
     except Exception as e:
         return None, f"PMC FTP erreur: {e}"
 
+
+# ------------------------------------------------
+# 📥 PMC Web
+# ------------------------------------------------
+
 def fetch_pdf_from_pmc_web(pmcid):
     """Tente de récupérer le PDF depuis le site web de PMC."""
     if not pmcid:
@@ -460,12 +669,11 @@ def fetch_pdf_from_pmc_web(pmcid):
             f"https://europepmc.org/articles/PMC{clean_id}?pdf=render",
         ]
 
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        headers = {"User-Agent": "Mozilla/5.0"}
 
         for url in urls:
             try:
                 r = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
-
                 if r.status_code == 200 and "application/pdf" in r.headers.get("Content-Type", ""):
                     return r.content, None
             except Exception:
@@ -476,6 +684,11 @@ def fetch_pdf_from_pmc_web(pmcid):
     except Exception as e:
         return None, f"PMC Web erreur: {e}"
 
+
+# ------------------------------------------------
+# 📥 PMC API
+# ------------------------------------------------
+
 def fetch_pdf_from_pubmed_central(pmcid):
     """Essaie de récupérer le PDF via PMC Central API."""
     if not pmcid:
@@ -483,7 +696,6 @@ def fetch_pdf_from_pubmed_central(pmcid):
 
     try:
         clean_id = _clean_pmcid(pmcid)
-
         api_url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=PMC{clean_id}"
 
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -503,6 +715,7 @@ def fetch_pdf_from_pubmed_central(pmcid):
                     r2 = requests.get(href, headers=headers, timeout=30)
                     if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
                         return r2.content, None
+
         except ET.ParseError:
             pass
 
@@ -510,6 +723,11 @@ def fetch_pdf_from_pubmed_central(pmcid):
 
     except Exception as e:
         return None, f"PMC API erreur: {e}"
+
+
+# ------------------------------------------------
+# 📥 Europe PMC
+# ------------------------------------------------
 
 def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
     """Tente de récupérer le PDF depuis Europe PMC."""
@@ -536,6 +754,7 @@ def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
 
                 if r2.status_code == 200 and "application/pdf" in r2.headers.get("Content-Type", ""):
                     return r2.content, None
+
         except ET.ParseError:
             pass
 
@@ -544,58 +763,72 @@ def fetch_pdf_from_europe_pmc(pmid, pmcid=None):
     except Exception as e:
         return None, f"EuropePMC erreur: {e}"
 
+
+# ------------------------------------------------
+# 🔁 Cascade complète de récupération PDF
+# ------------------------------------------------
+
 def fetch_pdf_cascade(pmid, doi, pmcid, unpaywall_email, utiliser_scihub=False):
     """Cascade optimisée de récupération PDF avec multiples sources."""
     reasons = {}
 
+    # 1. PMC API
     if pmcid:
         pdf, err = fetch_pdf_from_pubmed_central(pmcid)
         if pdf:
             return pdf, f"PMC API (PMC{_clean_pmcid(pmcid)})"
-        reasons['PMC_API'] = err
+        reasons["PMC_API"] = err
     else:
-        reasons['PMC_API'] = "Pas de PMCID"
+        reasons["PMC_API"] = "Pas de PMCID"
 
+    # 2. PMC Web
     if pmcid:
         pdf, err = fetch_pdf_from_pmc_web(pmcid)
         if pdf:
             return pdf, f"PMC Web (PMC{_clean_pmcid(pmcid)})"
-        reasons['PMC_Web'] = err
-    else:
-        reasons['PMC_Web'] = "Pas de PMCID"
+        reasons["PMC_Web"] = err
 
+    # 3. PMC FTP
     if pmcid:
         pdf, err = fetch_pdf_from_pmc_ftp(pmcid)
         if pdf:
             return pdf, f"PMC FTP (PMC{_clean_pmcid(pmcid)})"
-        reasons['PMC_FTP'] = err
-    else:
-        reasons['PMC_FTP'] = "Pas de PMCID"
+        reasons["PMC_FTP"] = err
 
+    # 4. Europe PMC
     pdf, err = fetch_pdf_from_europe_pmc(pmid, pmcid)
     if pdf:
         return pdf, "EuropePMC"
-    reasons['EuropePMC'] = err
+    reasons["EuropePMC"] = err
 
+    # 5. Unpaywall
     if doi:
         pdf, err = fetch_pdf_from_unpaywall(doi, unpaywall_email)
         if pdf:
             return pdf, "Unpaywall"
-        reasons['Unpaywall'] = err
+        reasons["Unpaywall"] = err
     else:
-        reasons['Unpaywall'] = "Pas de DOI"
+        reasons["Unpaywall"] = "Pas de DOI"
 
+    # Échec global
     msg = "Échec récupération PDF. Sources testées:\n"
     for source, reason in reasons.items():
         msg += f"  • {source}: {reason}\n"
 
     return None, msg.strip()
 
+
+# ------------------------------------------------
+# 📄 Extraction texte PDF
+# ------------------------------------------------
+
 def extract_with_pymupdf(pdf_content: bytes) -> str:
+    """Extraction via PyMuPDF (meilleur moteur)."""
     try:
         import fitz
     except ImportError:
         return ""
+
     try:
         doc = fitz.open(stream=pdf_content, filetype="pdf")
         pages = min(len(doc), 20)
@@ -603,21 +836,24 @@ def extract_with_pymupdf(pdf_content: bytes) -> str:
     except Exception:
         return ""
 
+
 def extract_with_pdfplumber(pdf_content: bytes) -> str:
+    """Extraction via pdfplumber."""
     try:
         import pdfplumber
     except ImportError:
         return ""
+
     try:
         with pdfplumber.open(BytesIO(pdf_content)) as pdf:
             pages = min(len(pdf.pages), 20)
-            return "\n\n".join(
-                pdf.pages[i].extract_text() or "" for i in range(pages)
-            )
+            return "\n\n".join(pdf.pages[i].extract_text() or "" for i in range(pages))
     except Exception:
         return ""
 
+
 def extract_with_pypdf(pdf_content: bytes) -> str:
+    """Extraction via pypdf."""
     try:
         reader = pypdf.PdfReader(BytesIO(pdf_content))
         pages = min(len(reader.pages), 20)
@@ -633,31 +869,46 @@ def extract_with_pypdf(pdf_content: bytes) -> str:
     except Exception:
         return ""
 
+
+# ------------------------------------------------
+# 🧠 Sélection automatique du meilleur moteur
+# ------------------------------------------------
+
 def extract_text_from_pdf(pdf_content: bytes):
-    """Essaie plusieurs moteurs successivement avec plus de pages."""
+    """Essaie plusieurs moteurs successivement avec fallback."""
     txt = extract_with_pymupdf(pdf_content)
     if len(txt) > 500:
-        return txt, "pymupdf"
+        return nettoyer_texte_pdf(txt), "pymupdf"
 
     txt = extract_with_pdfplumber(pdf_content)
     if len(txt) > 500:
-        return txt, "pdfplumber"
+        return nettoyer_texte_pdf(txt), "pdfplumber"
 
     txt = extract_with_pypdf(pdf_content)
     if len(txt) > 500:
-        return txt, "pypdf"
+        return nettoyer_texte_pdf(txt), "pypdf"
 
     if len(txt) > 100:
-        return txt, "extraction_partielle"
+        return nettoyer_texte_pdf(txt), "extraction_partielle"
 
     return "", "echec_extraction"
-
-
 # ============================================
 # PARTIE 6 — EXPORT NOTEBOOKLM (iOS SAFE)
 # ============================================
 
+import base64
+from utils_text import maintenant_str
+
+
+# ------------------------------------------------
+# 📝 Construction du texte NotebookLM
+# ------------------------------------------------
+
 def build_notebooklm_export(meta, texte_fr: str) -> str:
+    """
+    Construit un fichier texte complet pour NotebookLM,
+    incluant les métadonnées et le texte traduit.
+    """
     return f"""# VEILLE MEDICALE - {maintenant_str()}
 Titre: {meta.get('title_fr')}
 Titre original: {meta.get('title_en')}
@@ -669,11 +920,90 @@ Texte complet traduit:
 {texte_fr}
 """
 
+
+# ------------------------------------------------
+# 📥 Bouton de téléchargement compatible iPhone
+# ------------------------------------------------
+
 def bouton_download_ios_safe(label: str, content: str, filename: str):
-    """Bouton de téléchargement compatible iPhone (évite le blocage de la vue)."""
+    """
+    Génère un lien de téléchargement compatible iPhone.
+    Contrairement à st.download_button, ce lien n'ouvre pas
+    une vue modale bloquante dans Safari iOS.
+    """
     b64 = base64.b64encode(content.encode()).decode()
-    href = f'<a href="data:text/plain;base64,{b64}" download="{filename}" style="text-decoration:none;">{label}</a>'
-    st.markdown(href, unsafe_allow_html=True)
+    href = (
+        f'<a href="data:text/plain;base64,{b64}" '
+        f'download="{filename}" '
+        f'style="text-decoration:none; font-weight:600;">{label}</a>'
+    )
+    return href
+# ============================================
+# PARTIE 1 — IMPORTS & CONFIGURATION GÉNÉRALE
+# ============================================
+
+import streamlit as st
+from datetime import date
+import locale
+
+# Modules internes
+from config_specialites import SPECIALITES
+from utils_text import maintenant_str, tronquer
+from utils_traduction import (
+    traduire_mots_cles_gemini,
+    traduire_texte_court_cache,
+    traduire_long_texte_cache
+)
+from utils_pubmed import (
+    construire_query_pubmed,
+    pubmed_search_ids,
+    pubmed_fetch_metadata_and_abstracts
+)
+from utils_pdf import (
+    fetch_pdf_cascade,
+    extract_text_from_pdf
+)
+from utils_export import (
+    build_notebooklm_export,
+    bouton_download_ios_safe
+)
+
+# Locale FR pour les dates
+try:
+    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
+except Exception:
+    pass
+
+# Configuration Streamlit
+st.set_page_config(
+    page_title="Veille Médicale Pro",
+    page_icon="🩺",
+    layout="wide"
+)
+
+st.title("🩺 Veille Médicale Professionnelle")
+
+# Récupération des clés
+try:
+    G_KEY = st.secrets["GEMINI_KEY"]
+except Exception:
+    st.error("⚠️ Clé GEMINI_KEY manquante dans st.secrets")
+    st.stop()
+
+DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
+UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
+
+MODE_TRAD = "deepl" if DEEPL_KEY else "gemini"
+
+# Session state
+if "articles" not in st.session_state:
+    st.session_state.articles = []
+if "details" not in st.session_state:
+    st.session_state.details = {}
+if "historique" not in st.session_state:
+    st.session_state.historique = []
+if "debug" not in st.session_state:
+    st.session_state.debug = False
 
 
 # ============================================
@@ -692,12 +1022,12 @@ with st.sidebar:
         index=0
     )
 
-    # Variables partagées
     mots_cles_fr = ""
     specialite = None
     choix_journaux = []
     inclure_keywords = False
 
+    # Mode 1 : recherche par mots-clés
     if mode_recherche == "Par mots-clés":
         mots_cles_fr = st.text_input(
             "Mots-clés",
@@ -712,6 +1042,7 @@ with st.sidebar:
             except Exception as e:
                 st.warning(f"Erreur traduction mots-clés: {e}")
 
+    # Mode 2 : recherche par spécialité
     else:
         specialite = st.selectbox("Spécialité médicale", list(SPECIALITES.keys()))
         journaux_dispo = SPECIALITES[specialite]["journaux"]
@@ -731,7 +1062,7 @@ with st.sidebar:
             if mots_cles_fr.strip():
                 try:
                     trad_preview = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                    st.caption("Traduction EN pour PubMed (mots-clés supplémentaires) :")
+                    st.caption("Traduction EN pour PubMed :")
                     st.code(trad_preview)
                 except Exception as e:
                     st.warning(f"Erreur traduction mots-clés: {e}")
@@ -742,9 +1073,11 @@ with st.sidebar:
 
     st.write(f"📆 Période sélectionnée : {date_debut.strftime('%d/%m/%Y')} → {date_fin.strftime('%d/%m/%Y')}")
 
+    # Langue
     langue = st.selectbox("Langue", ["Toutes", "Anglais uniquement", "Français uniquement"])
     langue_code = "eng" if langue == "Anglais uniquement" else "fre" if langue == "Français uniquement" else ""
 
+    # Type d'étude
     type_etude_label = st.selectbox(
         "Type d'étude",
         ["Aucun filtre", "Essais cliniques", "Méta-analyses", "Revues systématiques"]
@@ -757,12 +1090,16 @@ with st.sidebar:
     }
     type_etude = mapping_types[type_etude_label]
 
+    # Nombre max
     nb_max = st.slider("Nombre max d'articles", 10, 200, 50, 10)
 
+    # Sci-Hub (placeholder)
     utiliser_scihub = st.checkbox("Activer Sci-Hub (non implémenté)", value=False)
 
+    # Bouton lancer
     lancer = st.button("🔍 Lancer la recherche", type="primary", use_container_width=True)
 
+    # Historique
     st.markdown("---")
     st.subheader("🕘 Historique des recherches")
     if st.session_state.historique:
@@ -783,9 +1120,12 @@ if lancer:
     else:
         with st.spinner("Recherche PubMed..."):
             try:
+                # Mode mots-clés
                 if mode_recherche == "Par mots-clés":
                     mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
                     base_query = mots_cles_en
+
+                # Mode spécialité
                 else:
                     base_query = SPECIALITES[specialite]["mesh_terms"]
 
@@ -797,6 +1137,7 @@ if lancer:
                         mots_cles_en_sup = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
                         base_query += f" AND ({mots_cles_en_sup})"
 
+                # Construction requête complète
                 query = construire_query_pubmed(
                     base_query,
                     date_debut,
@@ -805,21 +1146,29 @@ if lancer:
                     type_etude=type_etude
                 )
 
+                # Recherche PMIDs
                 pmids = pubmed_search_ids(query, max_results=nb_max)
+
+                # Récupération métadonnées
                 meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
 
+                # Traduction titres + abstracts
                 articles = []
                 for art in meta_list:
                     art["title_fr"] = traduire_texte_court_cache(
                         art["title_en"], MODE_TRAD, DEEPL_KEY, G_KEY
                     )
 
-                    art["abstract_fr"] = traduire_long_texte_cache(
-                        art["abstract_en"], MODE_TRAD, DEEPL_KEY, G_KEY, chunk_size=2000
-                    ) if art["abstract_en"] else ""
+                    art["abstract_fr"] = (
+                        traduire_long_texte_cache(
+                            art["abstract_en"], MODE_TRAD, DEEPL_KEY, G_KEY, chunk_size=2000
+                        )
+                        if art["abstract_en"] else ""
+                    )
 
                     articles.append(art)
 
+                    # Historique
                     st.session_state.historique.append({
                         "pmid": art["pmid"],
                         "title_en": art["title_en"],
@@ -856,21 +1205,24 @@ with col_stat3:
 
 st.markdown("---")
 
-# Boutons d'extraction en masse (affichés seulement s'il y a des articles)
+# Extraction en masse
 if total_articles > 0:
     col_mass1, col_mass2 = st.columns(2)
     with col_mass1:
         lancer_selection = st.button("📥 Extraire + traduire les articles sélectionnés")
     with col_mass2:
         lancer_tout = st.button("📥 Extraire + traduire TOUS les articles")
-
-    st.markdown("---")
 else:
     lancer_selection = False
     lancer_tout = False
 
+
+# ============================================
+# PARTIE 10 — EXTRACTION / TRADUCTION PDF
+# ============================================
+
 def traiter_pdf_pour_article(art):
-    """Pipeline récupération + extraction + traduction pour un article."""
+    """Pipeline complet pour un article : PDF → extraction → traduction."""
     pmid = art["pmid"]
 
     if pmid not in st.session_state.details:
@@ -884,6 +1236,7 @@ def traiter_pdf_pour_article(art):
 
     det = st.session_state.details[pmid]
 
+    # Récupération PDF
     pdf_bytes, source = fetch_pdf_cascade(
         pmid, art.get("doi"), art.get("pmcid"),
         UNPAYWALL_EMAIL, utiliser_scihub
@@ -892,23 +1245,22 @@ def traiter_pdf_pour_article(art):
     if not pdf_bytes:
         det["erreur"] = source
         st.error(source)
-        st.info("💡 Suggestions:\n- Vérifier si l'article a un PMCID ou DOI\n- Essayer de rechercher le PDF manuellement\n- L'article peut ne pas être en Open Access")
         return
 
     det["source_pdf"] = source
-    texte_en, methode = extract_text_from_pdf(pdf_bytes)
-    texte_en = nettoyer_texte_pdf(texte_en)
 
+    # Extraction texte
+    texte_en, methode = extract_text_from_pdf(pdf_bytes)
     if len(texte_en) < 200:
         det["erreur"] = f"Texte extrait insuffisant ({len(texte_en)} caractères) - Méthode: {methode}"
         st.warning(det["erreur"])
-        st.info("Le PDF a été téléchargé mais l'extraction de texte a échoué. Il peut s'agir d'un PDF scanné.")
         return
 
     det["methode_extraction"] = methode
     texte_en_tronque = tronquer(texte_en)
     det["texte_en"] = texte_en_tronque
 
+    # Traduction
     st.info("Traduction du PDF en cours...")
     try:
         det["texte_fr"] = traduire_long_texte_cache(
@@ -916,11 +1268,12 @@ def traiter_pdf_pour_article(art):
         )
         st.success(f"✅ PDF extrait et traduit avec succès ({len(texte_en)} caractères)")
     except Exception as e:
-        st.error(f"Erreur lors de la traduction: {e}")
         det["texte_fr"] = texte_en_tronque
         det["erreur"] = f"Traduction échouée: {e}"
+        st.error(det["erreur"])
 
-# Extraction en masse si demandé
+
+# Extraction en masse
 if lancer_tout:
     with st.spinner("Extraction + traduction de tous les articles..."):
         for art in st.session_state.articles:
@@ -935,7 +1288,8 @@ if lancer_selection:
             for art in selection:
                 traiter_pdf_pour_article(art)
 
-# Boucle d'affichage principale
+
+# Affichage des articles
 for art in st.session_state.articles:
     pmid = art["pmid"]
 
@@ -961,10 +1315,12 @@ for art in st.session_state.articles:
         # Sélection pour extraction en masse
         art["selected"] = st.checkbox("Sélectionner pour extraction/traduction", key=f"sel_{pmid}")
 
+        # Abstract FR
         if art["abstract_fr"]:
             st.markdown("### 🧾 Abstract (FR)")
             st.text(art["abstract_fr"])
 
+        # Abstract EN
         if art["abstract_en"]:
             with st.expander("Voir abstract original (EN)"):
                 st.text(art["abstract_en"])
@@ -973,11 +1329,13 @@ for art in st.session_state.articles:
 
         col1, col2 = st.columns(2)
 
+        # Extraction individuelle
         with col1:
             if st.button(f"📥 Récupérer PDF + traduire (PMID {pmid})", key=f"btn_{pmid}"):
                 with st.spinner("Téléchargement et extraction du PDF..."):
                     traiter_pdf_pour_article(art)
 
+        # Affichage + export
         with col2:
             if det["texte_fr"]:
                 st.write(f"**Source PDF :** {det['source_pdf']}")
@@ -985,10 +1343,13 @@ for art in st.session_state.articles:
                 st.text(det["texte_fr"][:800])
 
                 export_txt = build_notebooklm_export(art, det["texte_fr"])
-                bouton_download_ios_safe(
-                    "📥 Export NotebookLM",
-                    export_txt,
-                    f"notebooklm_pmid_{pmid}.txt"
+                st.markdown(
+                    bouton_download_ios_safe(
+                        "📥 Export NotebookLM",
+                        export_txt,
+                        f"notebooklm_pmid_{pmid}.txt"
+                    ),
+                    unsafe_allow_html=True
                 )
 
             elif det["erreur"]:
