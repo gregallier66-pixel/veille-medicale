@@ -571,6 +571,7 @@ def _clean_pmcid(pmcid: str) -> str:
     if not pmcid:
         return ""
     return pmcid.replace("PMC", "").strip()
+
 def check_pdf_free_unpaywall(doi, email):
     """Vérifie via Unpaywall si un PDF OA est disponible, sans forcément le télécharger."""
     if not doi:
@@ -784,6 +785,16 @@ def bouton_download_ios_safe(label: str, content: str, filename: str):
         f'style="text-decoration:none; font-weight:600;">{label}</a>'
     )
     return href
+
+def bouton_download_pdf_ios_safe(label: str, pdf_bytes: bytes, filename: str):
+    """Génère un lien de téléchargement PDF compatible iPhone."""
+    b64 = base64.b64encode(pdf_bytes).decode()
+    href = (
+        f'<a href="data:application/pdf;base64,{b64}" '
+        f'download="{filename}" '
+        f'style="text-decoration:none; font-weight:600;">{label}</a>'
+    )
+    return href
     
 @st.cache_data(ttl=60 * 60 * 24 * 5)  # 5 jours
 def get_traductions_pdf_historiques(entries):
@@ -960,7 +971,7 @@ if lancer:
             
             st.success(f"✅ {len(pmids)} articles trouvés")
 
-                        # Récupération métadonnées
+            # Récupération métadonnées
             st.info("📥 Récupération des métadonnées...")
             meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
             
@@ -1000,7 +1011,7 @@ if lancer:
                 try:
                     status_text.text(f"Traduction de l'article {idx + 1}/{len(meta_list)}...")
                     
-                                        titre_traduit = traduire_texte_court_cache(
+                    titre_traduit = traduire_texte_court_cache(
                         art["title_en"], MODE_TRAD, DEEPL_KEY, G_KEY
                     ).strip()
 
@@ -1080,9 +1091,8 @@ if total_articles > 0:
             if art["abstract_en"]:
                 with st.expander("Voir abstract original (EN)"):
                     st.write(art["abstract_en"])
-else:
-    st.info("👈 Utilisez le menu latéral pour lancer une recherche")
-                # Indication de disponibilité PDF OA
+
+            # Indication de disponibilité PDF OA
             if art.get("has_free_pdf"):
                 st.success("✅ PDF gratuit (Open Access) disponible")
             else:
@@ -1166,7 +1176,8 @@ else:
                                     "year": art.get("year"),
                                     "filename": filename
                                 })
-get_traductions_pdf_historiques(st.session_state.traductions_pdf)
+                                get_traductions_pdf_historiques(st.session_state.traductions_pdf)
 
                                 st.success("✅ PDF extrait, traduit et prêt pour NotebookLM.")
-
+else:
+    st.info("👈 Utilisez le menu latéral pour lancer une recherche")
