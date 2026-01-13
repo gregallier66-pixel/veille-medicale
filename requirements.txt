@@ -13,3 +13,4 @@ deepl>=1.17
 lxml>=5.1
 # Divers (recommandé pour compatibilité)
 certifi
+reportlab>=4.0
