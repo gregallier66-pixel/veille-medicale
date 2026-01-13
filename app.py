@@ -14,6 +14,9 @@ import tarfile
 from io import BytesIO
 import pypdf
 import base64
+from reportlab.lib.pagesizes import A4        # <-- NEW
+from reportlab.pdfgen import canvas          # <-- NEW
+
 
 # Locale FR pour les dates
 try:
@@ -568,6 +571,40 @@ def _clean_pmcid(pmcid: str) -> str:
     if not pmcid:
         return ""
     return pmcid.replace("PMC", "").strip()
+def check_pdf_free_unpaywall(doi, email):
+    """Vérifie via Unpaywall si un PDF OA est disponible, sans forcément le télécharger."""
+    if not doi:
+        return False, None, "Pas de DOI"
+
+    try:
+        url = f"https://api.unpaywall.org/v2/{doi}"
+        params = {"email": email}
+        r = requests.get(url, params=params, timeout=20)
+
+        if r.status_code == 404:
+            return False, None, "Unpaywall: DOI inconnu"
+        if r.status_code != 200:
+            return False, None, f"Unpaywall HTTP {r.status_code}"
+
+        data = r.json()
+
+        if not data.get("is_oa"):
+            return False, None, "Unpaywall: pas Open Access"
+
+        # On privilégie best_oa_location
+        best = data.get("best_oa_location")
+        if best and best.get("url_for_pdf"):
+            return True, best["url_for_pdf"], None
+
+        # Sinon on regarde dans oa_locations
+        for loc in data.get("oa_locations", []):
+            pdf_url = loc.get("url_for_pdf")
+            if pdf_url:
+                return True, pdf_url, None
+
+        return False, None, "Unpaywall: PDF OA non trouvé dans les locations"
+    except Exception as e:
+        return False, None, f"Unpaywall erreur: {e}"
 
 
 def fetch_pdf_from_unpaywall(doi, email):
@@ -666,6 +703,64 @@ def extract_text_from_pdf(pdf_content: bytes):
 # PARTIE 6 — EXPORT NOTEBOOKLM
 # ============================================
 
+def build_pdf_from_text(titre: str, contenu: str) -> bytes:
+    """Génère un PDF simple (A4) contenant le titre et le texte."""
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    # Paramètres de base
+    x_margin = 50
+    y_margin = 50
+    max_width = width - 2 * x_margin
+    line_height = 14
+
+    # Fonction de découpe de ligne
+    def wrap_text(text, canvas_obj, max_width):
+        words = text.split()
+        lines = []
+        line = ""
+        for w in words:
+            test_line = (line + " " + w).strip()
+            if canvas_obj.stringWidth(test_line, "Helvetica", 11) <= max_width:
+                line = test_line
+            else:
+                lines.append(line)
+                line = w
+        if line:
+            lines.append(line)
+        return lines
+
+    y = height - y_margin
+
+    # Titre
+    c.setFont("Helvetica-Bold", 14)
+    for line in wrap_text(titre, c, max_width):
+        c.drawString(x_margin, y, line)
+        y -= line_height
+    y -= 2 * line_height
+
+    # Corps
+    c.setFont("Helvetica", 11)
+    for paragraphe in contenu.split("\n"):
+        paragraphe = paragraphe.strip()
+        if not paragraphe:
+            y -= line_height
+            continue
+        for line in wrap_text(paragraphe, c, max_width):
+            if y < y_margin:
+                c.showPage()
+                y = height - y_margin
+                c.setFont("Helvetica", 11)
+            c.drawString(x_margin, y, line)
+            y -= line_height
+
+    c.showPage()
+    c.save()
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
+
 def build_notebooklm_export(meta, texte_fr: str) -> str:
     """Construit un fichier texte complet pour NotebookLM."""
     return f"""# VEILLE MEDICALE - {maintenant_str()}
@@ -689,7 +784,11 @@ def bouton_download_ios_safe(label: str, content: str, filename: str):
         f'style="text-decoration:none; font-weight:600;">{label}</a>'
     )
     return href
-
+    
+@st.cache_data(ttl=60 * 60 * 24 * 5)  # 5 jours
+def get_traductions_pdf_historiques(entries):
+    """Persiste la liste des traductions PDF pendant quelques jours (si le cache n'est pas vidé)."""
+    return entries
 
 # ============================================
 # PARTIE 7 — INTERFACE : SIDEBAR & PARAMÈTRES
@@ -776,6 +875,11 @@ with st.sidebar:
     type_etude = mapping_types[type_etude_label]
 
     nb_max = st.slider("Nombre max d'articles", 10, 200, 50, 10)
+    
+    type_acces = st.selectbox(
+        "Type d'accès",
+        ["Tous les articles", "Titre + abstract disponibles", "PDF gratuit uniquement"]
+    )
 
     lancer = st.button("🔍 Lancer la recherche", type="primary", use_container_width=True)
 
@@ -784,6 +888,14 @@ with st.sidebar:
     if st.session_state.historique:
         for h in st.session_state.historique[-10:]:
             st.markdown(f"- **{h.get('title_fr', 'Sans titre')}** ({h.get('journal', 'N/A')} {h.get('year', 'N/A')}) – PMID {h.get('pmid', 'N/A')}")
+
+st.subheader("📂 Traductions PDF récentes")
+if st.session_state.get("traductions_pdf"):
+    for item in st.session_state.traductions_pdf[-10:]:
+        st.markdown(
+            f"- **{item['title_fr']} / {item['title_en']}** "
+            f"({item['journal']} {item['year']}) – PMID {item['pmid']}"
+        )
 
 
 # ============================================
@@ -848,7 +960,7 @@ if lancer:
             
             st.success(f"✅ {len(pmids)} articles trouvés")
 
-            # Récupération métadonnées
+                        # Récupération métadonnées
             st.info("📥 Récupération des métadonnées...")
             meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
             
@@ -858,9 +970,29 @@ if lancer:
             
             st.success(f"✅ {len(meta_list)} métadonnées récupérées")
 
+            # Vérification disponibilité PDF OA (sans téléchargement complet)
+            st.info("📄 Vérification de la disponibilité des PDFs gratuits (Open Access)...")
+            for art in meta_list:
+                doi = art.get("doi")
+                has_free_pdf, pdf_url, reason = check_pdf_free_unpaywall(doi, UNPAYWALL_EMAIL)
+                art["has_free_pdf"] = has_free_pdf
+                art["pdf_url_oa"] = pdf_url
+                art["pdf_oa_reason"] = reason
+
+            # Filtre en fonction du type d'accès demandé
+            if type_acces == "Titre + abstract disponibles":
+                meta_list = [a for a in meta_list if a.get("abstract_en")]
+            elif type_acces == "PDF gratuit uniquement":
+                meta_list = [a for a in meta_list if a.get("has_free_pdf")]
+
+            if not meta_list:
+                st.warning("⚠️ Aucun article ne correspond au filtre d'accès choisi.")
+                st.stop()
+
             # Traduction titres + abstracts
             st.info("🌐 Traduction des titres et résumés...")
             articles = []
+
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -868,9 +1000,15 @@ if lancer:
                 try:
                     status_text.text(f"Traduction de l'article {idx + 1}/{len(meta_list)}...")
                     
-                    art["title_fr"] = traduire_texte_court_cache(
+                                        titre_traduit = traduire_texte_court_cache(
                         art["title_en"], MODE_TRAD, DEEPL_KEY, G_KEY
-                    )
+                    ).strip()
+
+                    # Fallback si la traduction est vide ou identique au texte brut
+                    if not titre_traduit:
+                        titre_traduit = art["title_en"]
+
+                    art["title_fr"] = titre_traduit
 
                     art["abstract_fr"] = (
                         traduire_long_texte_cache(
@@ -944,3 +1082,91 @@ if total_articles > 0:
                     st.write(art["abstract_en"])
 else:
     st.info("👈 Utilisez le menu latéral pour lancer une recherche")
+                # Indication de disponibilité PDF OA
+            if art.get("has_free_pdf"):
+                st.success("✅ PDF gratuit (Open Access) disponible")
+            else:
+                st.info("ℹ️ PDF gratuit non identifié via Unpaywall")
+
+            # Sélection et extraction/traduction du PDF pour cet article
+            if art.get("has_free_pdf"):
+                if st.button(
+                    "📄 Extraire & traduire le PDF en français",
+                    key=f"btn_extract_{pmid}"
+                ):
+                    with st.spinner("Récupération du PDF et traduction..."):
+                        # Récupération du PDF via cascade
+                        pdf_content, source_msg = fetch_pdf_cascade(
+                            pmid=art["pmid"],
+                            doi=art.get("doi"),
+                            pmcid=art.get("pmcid"),
+                            unpaywall_email=UNPAYWALL_EMAIL,
+                            utiliser_scihub=False
+                        )
+
+                        if not pdf_content:
+                            st.error(f"Impossible de récupérer le PDF : {source_msg}")
+                        else:
+                            texte_pdf_en, methode = extract_text_from_pdf(pdf_content)
+                            texte_pdf_en = tronquer(texte_pdf_en, max_len=12000)
+
+                            if not texte_pdf_en:
+                                st.warning("Texte PDF non exploitable ou trop court.")
+                            else:
+                                texte_pdf_fr = traduire_long_texte_cache(
+                                    texte_pdf_en,
+                                    MODE_TRAD,
+                                    deepl_key=DEEPL_KEY,
+                                    g_key=G_KEY,
+                                    chunk_size=2000
+                                )
+
+                                # Construire un texte structuré pour NotebookLM
+                                contenu_notebooklm = build_notebooklm_export(
+                                    art,
+                                    texte_pdf_fr
+                                )
+
+                                # Générer le PDF
+                                titre_pdf = f"{art.get('title_fr') or art.get('title_en')}"
+                                pdf_bytes = build_pdf_from_text(
+                                    titre_pdf,
+                                    contenu_notebooklm
+                                )
+                                filename = f"veille_{art['pmid']}.pdf"
+
+                                # Bouton de téléchargement classique
+                                st.download_button(
+                                    label="⬇️ Télécharger la traduction en PDF",
+                                    data=pdf_bytes,
+                                    file_name=filename,
+                                    mime="application/pdf",
+                                    key=f"download_{pmid}"
+                                )
+
+                                # Lien iOS-safe
+                                st.markdown(
+                                    bouton_download_pdf_ios_safe(
+                                        "⬇️ Télécharger pour iPhone / iPad",
+                                        pdf_bytes,
+                                        filename
+                                    ),
+                                    unsafe_allow_html=True
+                                )
+
+                                # Sauvegarde dans un historique de traductions
+                                if "traductions_pdf" not in st.session_state:
+                                    st.session_state.traductions_pdf = []
+                                st.session_state.traductions_pdf.append({
+                                    "timestamp": maintenant_str(),
+                                    "pmid": art["pmid"],
+                                    "title_fr": art.get("title_fr"),
+                                    "title_en": art.get("title_en"),
+                                    "journal": art.get("journal"),
+                                    "year": art.get("year"),
+                                    "filename": filename
+                                })
+get_traductions_pdf_historiques(st.session_state.traductions_pdf)
+
+                                st.success("✅ PDF extrait, traduit et prêt pour NotebookLM.")
+
