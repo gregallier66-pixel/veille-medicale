@@ -1005,50 +1005,38 @@ if st.session_state.get("traductions_pdf"):
 
 
 # ============================================
-# PARTIE 8 — LOGIQUE DE RECHERCHE (VERSION PROPRE)
+# PARTIE 8 — LOGIQUE DE RECHERCHE (ADAPTÉE)
 # ============================================
 
 if lancer:
     st.info("🔍 Recherche lancée...")
 
-    # Reset session
     st.session_state.articles = []
     st.session_state.details = {}
 
-    # Vérification mots-clés
     if mode_recherche == "Par mots-clés" and not mots_cles_fr.strip():
         st.error("❌ Merci de saisir au moins un mot-clé.")
         st.stop()
 
     try:
-        # ----------------------------------------------------
-        # 1) Construction de la requête PubMed
-        # ----------------------------------------------------
+        # 1️⃣ Construction de la requête
         if mode_recherche == "Par mots-clés":
             st.info("📝 Traduction des mots-clés...")
             mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
             base_query = mots_cles_en
-
             if st.session_state.debug:
                 st.write(f"🔍 Requête base (mots-clés) : {base_query}")
-
         else:
             base_query = SPECIALITES[specialite]["mesh_terms"]
-
-            # Ajout éventuel de mots-clés supplémentaires
             if inclure_keywords and mots_cles_fr.strip():
                 mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
                 base_query += f" AND ({mots_cles_en})"
-
-            # Filtrage par journaux
             if choix_journaux:
                 journaux_query = " OR ".join([f'"{j}"[Journal]' for j in choix_journaux])
                 base_query += f" AND ({journaux_query})"
-
             if st.session_state.debug:
                 st.write(f"🔍 Requête base (spécialité) : {base_query}")
 
-        # Construction finale
         query = construire_query_pubmed(
             base_query,
             date_debut,
@@ -1056,58 +1044,37 @@ if lancer:
             langue_code,
             type_etude
         )
-
         if st.session_state.debug:
             st.code(query, language="text")
 
-        # ----------------------------------------------------
-        # 2) Recherche des PMIDs
-        # ----------------------------------------------------
+        # 2️⃣ Recherche des PMIDs
         pmids = pubmed_search_ids(query, max_results=nb_max)
-
         if not pmids:
             st.warning("Aucun article trouvé pour cette requête.")
             st.stop()
-
         st.success(f"📄 {len(pmids)} articles trouvés")
 
-        # ----------------------------------------------------
-        # 3) Récupération des métadonnées
-        # ----------------------------------------------------
+        # 3️⃣ Récupération des métadonnées
         articles = pubmed_fetch_metadata_and_abstracts(pmids)
-
         if not articles:
             st.error("❌ Impossible de récupérer les métadonnées PubMed.")
             st.stop()
-
         st.session_state.articles = articles
 
-        # ----------------------------------------------------
-        # 4) Filtrage selon type d'accès
-        # ----------------------------------------------------
+        # 4️⃣ Filtrage selon type d'accès
         articles_affiches = []
-
         for meta in articles:
-            has_abstract = bool(meta.get("abstract_en"))
-            has_doi = bool(meta.get("doi"))
-
-            # Filtre : abstract obligatoire
-            if type_acces == "Titre + abstract disponibles" and not has_abstract:
+            if type_acces == "Titre + abstract disponibles" and not meta.get("abstract_en"):
                 continue
-
-            # Filtre : PDF gratuit obligatoire
             if type_acces == "PDF gratuit uniquement":
                 ok, url_pdf, reason = check_pdf_free_unpaywall(meta.get("doi"), UNPAYWALL_EMAIL)
                 if not ok:
                     if st.session_state.debug:
                         st.warning(f"PMID {meta['pmid']} — PDF non disponible : {reason}")
                     continue
-
             articles_affiches.append(meta)
 
-        # ----------------------------------------------------
-        # 5) Affichage des résultats
-        # ----------------------------------------------------
+        # 5️⃣ Affichage des résultats
         st.subheader("📑 Résultats de la recherche")
 
         if not articles_affiches:
@@ -1115,28 +1082,20 @@ if lancer:
         else:
             for meta in articles_affiches:
                 with st.expander(f"{meta['title_en']} ({meta['journal']} {meta['year']})"):
-
-                    # Métadonnées
                     st.write(f"**PMID :** {meta['pmid']}")
                     st.write(f"**DOI :** {meta.get('doi', 'N/A')}")
-
-                    # Abstract EN
                     st.write("### Abstract (EN)")
-                    st.write(meta.get("abstract_en", "Non disponible"))
+                    st.write(meta.get("abstract_en", "_Non disponible_"))
 
-                    # Traduction du titre
                     with st.expander("🇫🇷 Traduction du titre"):
                         st.write(traduire_avec_fallback(meta["title_en"]))
 
-                    # Traduction de l'abstract
                     with st.expander("🇫🇷 Traduction de l'abstract"):
                         st.write(traduire_avec_fallback(meta["abstract_en"]))
 
-                    # Résumé court
                     with st.expander("📝 Résumé court"):
                         st.write(resumer_avec_fallback(meta["abstract_en"], mode="court"))
 
-                    # Résumé long
                     with st.expander("📘 Résumé long"):
                         st.write(resumer_avec_fallback(meta["abstract_en"], mode="long"))
 
