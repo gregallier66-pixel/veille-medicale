@@ -16,6 +16,7 @@ import pypdf
 import base64
 from reportlab.lib.pagesizes import A4        # <-- NEW
 from reportlab.pdfgen import canvas          # <-- NEW
+import anthropic
 
 
 # Locale FR pour les dates
@@ -41,14 +42,26 @@ except Exception as e:
     st.error(f"⚠️ Clé GEMINI_KEY manquante dans st.secrets: {e}")
     st.stop()
 
+# Clé Claude (optionnelle)
+try:
+    CLAUDE_KEY = st.secrets["CLAUDE_KEY"]
+    client_claude = anthropic.Anthropic(api_key=CLAUDE_KEY)
+    st.sidebar.success("✅ Clé Claude chargée")
+except Exception:
+    client_claude = None
+    st.sidebar.info("ℹ️ Claude non configuré")
+
+# Clé DeepL (optionnelle)
 DEEPL_KEY = st.secrets.get("DEEPL_KEY", None)
 if DEEPL_KEY:
     st.sidebar.success("✅ Clé DeepL chargée")
 else:
     st.sidebar.info("ℹ️ DeepL non configuré, utilisation de Gemini")
 
+# Email Unpaywall
 UNPAYWALL_EMAIL = st.secrets.get("UNPAYWALL_EMAIL", "example@email.com")
 
+# Mode de traduction par défaut
 MODE_TRAD = "deepl" if DEEPL_KEY else "gemini"
 
 # Session state
@@ -426,6 +439,84 @@ def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
         model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
         prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
+
+def traduire_claude(texte: str) -> str:
+    """Traduction FR via Claude (fallback)."""
+    if not client_claude:
+        return texte
+
+    try:
+        msg = client_claude.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=2000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Traduis ce texte en français médical professionnel, sans préambule :\n\n{texte}"
+                }
+            ]
+        )
+        return msg.content[0].text.strip()
+    except Exception:
+        return texte
+        
+def resumer_claude(texte: str, mode="court") -> str:
+    """Résumé FR via Claude."""
+    if not client_claude:
+        return texte
+
+    consignes = (
+        "Résumé très court (3–5 lignes), style professionnel."
+        if mode == "court"
+        else "Résumé détaillé, structuré, style fiche de lecture."
+    )
+
+    try:
+        msg = client_claude.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=2500,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{consignes}\n\nTEXTE :\n{texte}"
+                }
+            ]
+        )
+        return msg.content[0].text.strip()
+    except Exception:
+        return texte
+
+def traduire_avec_fallback(texte: str) -> str:
+    """Tente Gemini, puis Claude si erreur."""
+    try:
+        return traduire_gemini_chunk(texte, G_KEY)
+    except Exception:
+        return traduire_claude(texte)
+
+def resumer_avec_fallback(texte: str, mode="court") -> str:
+    """Résumé via Gemini, fallback Claude."""
+    try:
+        genai.configure(api_key=G_KEY)
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+
+        prompt = f"""
+        Résume ce texte en français ({mode}).
+
+        CONSIGNES :
+        - Style professionnel
+        - Pas de phrases inutiles
+        - Conserve les données clés
+
+        TEXTE :
+        {texte}
+        """
+
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
+
+    except Exception:
+        return resumer_claude(texte, mode=mode)
+
 
 CONSIGNES:
 - Fournis UNIQUEMENT les termes anglais
@@ -910,159 +1001,140 @@ if st.session_state.get("traductions_pdf"):
 
 
 # ============================================
-# PARTIE 8 — LOGIQUE DE RECHERCHE
+# PARTIE 8 — LOGIQUE DE RECHERCHE (CORRIGÉE)
 # ============================================
 
 if lancer:
     st.info("🔍 Recherche lancée...")
-    
+
     st.session_state.articles = []
     st.session_state.details = {}
 
+    # Vérification mots-clés si mode mots-clés
     if mode_recherche == "Par mots-clés" and not mots_cles_fr.strip():
         st.error("❌ Merci de saisir au moins un mot-clé.")
-    else:
-        try:
-            # Construction de la requête
-            if mode_recherche == "Par mots-clés":
-                st.info("📝 Traduction des mots-clés...")
+        st.stop()
+
+    try:
+        # -----------------------------
+        # 1) Construction de la requête
+        # -----------------------------
+        if mode_recherche == "Par mots-clés":
+            st.info("📝 Traduction des mots-clés...")
+            mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
+            base_query = mots_cles_en
+
+            if st.session_state.debug:
+                st.write(f"🔍 Requête base (mots-clés) : {base_query}")
+
+        else:
+            base_query = SPECIALITES[specialite]["mesh_terms"]
+
+            # Ajout éventuel de mots-clés supplémentaires
+            if inclure_keywords and mots_cles_fr.strip():
                 mots_cles_en = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                base_query = mots_cles_en
-                if st.session_state.debug:
-                    st.write(f"🔍 Requête base (mots-clés): {base_query}")
+                base_query += f" AND ({mots_cles_en})"
 
-            else:
-                base_query = SPECIALITES[specialite]["mesh_terms"]
-                if st.session_state.debug:
-                    st.write(f"🔍 Requête base (spécialité): {base_query}")
-
-                if choix_journaux:
-                    journaux_query = " OR ".join([f'"{j}"[Journal]' for j in choix_journaux])
-                    base_query += f" AND ({journaux_query})"
-                    if st.session_state.debug:
-                        st.write(f"📚 Journaux ajoutés: {journaux_query}")
-
-                if inclure_keywords and mots_cles_fr.strip():
-                    st.info("📝 Traduction des mots-clés supplémentaires...")
-                    mots_cles_en_sup = traduire_mots_cles_gemini(mots_cles_fr, G_KEY)
-                    base_query += f" AND ({mots_cles_en_sup})"
-                    if st.session_state.debug:
-                        st.write(f"🔍 Mots-clés supplémentaires: {mots_cles_en_sup}")
-
-            # Construction requête complète
-            query = construire_query_pubmed(
-                base_query,
-                date_debut,
-                date_fin,
-                langue_code=langue_code,
-                type_etude=type_etude
-            )
+            if choix_journaux:
+                journaux_query = " OR ".join([f'"{j}"[Journal]' for j in choix_journaux])
+                base_query += f" AND ({journaux_query})"
 
             if st.session_state.debug:
-                st.info(f"🔍 Requête PubMed finale:\n```\n{query}\n```")
+                st.write(f"🔍 Requête base (spécialité) : {base_query}")
 
-            # Recherche PMIDs
-            st.info("🔍 Recherche des articles sur PubMed...")
-            pmids = pubmed_search_ids(query, max_results=nb_max)
-            
-            if not pmids:
-                st.warning("⚠️ Aucun article trouvé avec ces critères.")
-                st.stop()
-            
-            st.success(f"✅ {len(pmids)} articles trouvés")
+        # Construction finale
+        query = construire_query_pubmed(
+            base_query,
+            date_debut,
+            date_fin,
+            langue_code,
+            type_etude
+        )
 
-            # Récupération métadonnées
-            st.info("📥 Récupération des métadonnées...")
-            meta_list = pubmed_fetch_metadata_and_abstracts(pmids)
-            
-            if not meta_list:
-                st.warning("⚠️ Impossible de récupérer les métadonnées.")
-                st.stop()
-            
-            st.success(f"✅ {len(meta_list)} métadonnées récupérées")
+        if st.session_state.debug:
+            st.code(query, language="text")
 
-            # Vérification disponibilité PDF OA (sans téléchargement complet)
-            st.info("📄 Vérification de la disponibilité des PDFs gratuits (Open Access)...")
-            for art in meta_list:
-                doi = art.get("doi")
-                has_free_pdf, pdf_url, reason = check_pdf_free_unpaywall(doi, UNPAYWALL_EMAIL)
-                art["has_free_pdf"] = has_free_pdf
-                art["pdf_url_oa"] = pdf_url
-                art["pdf_oa_reason"] = reason
+        # -----------------------------
+        # 2) Recherche des PMIDs
+        # -----------------------------
+        pmids = pubmed_search_ids(query, max_results=nb_max)
 
-            # Filtre en fonction du type d'accès demandé
-            if type_acces == "Titre + abstract disponibles":
-                meta_list = [a for a in meta_list if a.get("abstract_en")]
-            elif type_acces == "PDF gratuit uniquement":
-                meta_list = [a for a in meta_list if a.get("has_free_pdf")]
+        if not pmids:
+            st.warning("Aucun article trouvé pour cette requête.")
+            st.stop()
 
-            if not meta_list:
-                st.warning("⚠️ Aucun article ne correspond au filtre d'accès choisi.")
-                st.stop()
+        st.success(f"📄 {len(pmids)} articles trouvés")
 
-            # Traduction titres + abstracts
-            st.info("🌐 Traduction des titres et résumés...")
-            articles = []
+        # -----------------------------
+        # 3) Récupération métadonnées
+        # -----------------------------
+        articles = pubmed_fetch_metadata_and_abstracts(pmids)
 
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for idx, art in enumerate(meta_list):
-                try:
-                    status_text.text(f"Traduction de l'article {idx + 1}/{len(meta_list)}...")
-                    
-                    titre_traduit = traduire_texte_court_cache(
-                        art["title_en"], MODE_TRAD, DEEPL_KEY, G_KEY
-                    ).strip()
+        if not articles:
+            st.error("❌ Impossible de récupérer les métadonnées PubMed.")
+            st.stop()
 
-                    # Fallback si la traduction est vide ou identique au texte brut
-                    if not titre_traduit:
-                        titre_traduit = art["title_en"]
+        st.session_state.articles = articles
 
-                    art["title_fr"] = titre_traduit
+        # -----------------------------
+        # 4) Filtrage selon type d'accès
+        # -----------------------------
+        articles_affiches = []
 
-                    art["abstract_fr"] = (
-                        traduire_long_texte_cache(
-                            art["abstract_en"], MODE_TRAD, DEEPL_KEY, G_KEY, chunk_size=2000
-                        )
-                        if art["abstract_en"] else ""
-                    )
+        for meta in articles:
+            has_abstract = bool(meta.get("abstract_en"))
+            has_doi = bool(meta.get("doi"))
 
-                    articles.append(art)
+            if type_acces == "Titre + abstract disponibles" and not has_abstract:
+                continue
 
-                    st.session_state.historique.append({
-                        "pmid": art["pmid"],
-                        "title_en": art["title_en"],
-                        "title_fr": art["title_fr"],
-                        "journal": art["journal"],
-                        "year": art["year"],
-                        "doi": art.get("doi"),
-                        "pmcid": art.get("pmcid")
-                    })
-                    
-                    progress_bar.progress((idx + 1) / len(meta_list))
-                    
-                    # Petit délai pour éviter le rate limiting
-                    import time
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    st.warning(f"⚠️ Erreur traduction article {art.get('pmid')}: {e}")
-                    # Ajouter l'article même si la traduction échoue
-                    art["title_fr"] = art["title_en"]
-                    art["abstract_fr"] = art["abstract_en"]
-                    articles.append(art)
+            if type_acces == "PDF gratuit uniquement":
+                ok, url_pdf, reason = check_pdf_free_unpaywall(meta.get("doi"), UNPAYWALL_EMAIL)
+                if not ok:
+                    if st.session_state.debug:
+                        st.warning(f"PMID {meta['pmid']} — PDF non disponible : {reason}")
+                    continue
 
-            status_text.empty()
-            st.session_state.articles = articles
-            st.success(f"✅ {len(articles)} articles traduits avec succès!")
+            articles_affiches.append(meta)
 
-        except Exception as e:
-            st.error(f"❌ Erreur globale : {e}")
-            if st.session_state.debug:
-                import traceback
-                st.code(traceback.format_exc())
+        # -----------------------------
+       # -----------------------------
+# 5) Affichage des résultats
+# -----------------------------
+st.subheader("📑 Résultats de la recherche")
 
+if not articles_affiches:
+    st.warning("Aucun article ne correspond aux critères d'accès sélectionnés.")
+else:
+    for meta in articles_affiches:
+        with st.expander(f"{meta['title_en']} ({meta['journal']} {meta['year']})"):
+
+            # Métadonnées
+            st.write(f"**PMID :** {meta['pmid']}")
+            st.write(f"**DOI :** {meta.get('doi', 'N/A')}")
+
+            # Abstract EN
+            st.write("### Abstract (EN)")
+            st.write(meta.get("abstract_en", "Non disponible"))
+
+            # Traduction du titre
+            with st.expander("🇫🇷 Traduction du titre"):
+                st.write(traduire_avec_fallback(meta["title_en"]))
+
+            # Traduction de l'abstract
+            with st.expander("🇫🇷 Traduction de l'abstract"):
+                st.write(traduire_avec_fallback(meta["abstract_en"]))
+
+            # Résumé court
+            with st.expander("📝 Résumé court"):
+                st.write(resumer_avec_fallback(meta["abstract_en"], mode="court"))
+
+            # Résumé long
+            with st.expander("📘 Résumé long"):
+                st.write(resumer_avec_fallback(meta["abstract_en"], mode="long"))
+
+except Exception as e:
+    st.error(f"❌ Erreur lors de la recherche : {e}")
 
 # ============================================
 # PARTIE 9 — AFFICHAGE DES ARTICLES
