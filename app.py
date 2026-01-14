@@ -333,7 +333,7 @@ def maintenant_str() -> str:
 
 
 # ============================================
-# PARTIE 3 — TRADUCTION (DEEPL / GEMINI)
+# PARTIE 3 — TRADUCTION (DEEPL / GEMINI / CLAUDE)
 # ============================================
 
 def traduire_deepl_chunk(texte: str, api_key: str) -> str:
@@ -385,6 +385,35 @@ TRADUCTION FRANÇAISE:"""
         return texte
 
 
+def traduire_claude(texte: str) -> str:
+    """Traduction FR via Claude (fallback)."""
+    if not client_claude:
+        return texte
+
+    try:
+        msg = client_claude.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=2000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Traduis ce texte en français médical professionnel, sans préambule :\n\n{texte}"
+                }
+            ]
+        )
+        return msg.content[0].text.strip()
+    except Exception:
+        return texte
+
+
+def traduire_avec_fallback(texte: str) -> str:
+    """Tente Gemini, puis Claude si erreur."""
+    try:
+        return traduire_gemini_chunk(texte, G_KEY)
+    except Exception:
+        return traduire_claude(texte)
+
+
 @st.cache_data(show_spinner=False)
 def traduire_long_texte_cache(
     texte: str,
@@ -406,7 +435,7 @@ def traduire_long_texte_cache(
             if mode == "deepl" and deepl_key:
                 t = traduire_deepl_chunk(chunk, deepl_key)
             else:
-                t = traduire_gemini_chunk(chunk, g_key)
+                t = traduire_avec_fallback(chunk)
             trad_total.append(t)
         except Exception as e:
             st.error(f"❌ Erreur traduction chunk: {e}")
@@ -429,7 +458,7 @@ def traduire_texte_court_cache(
     if mode == "deepl" and deepl_key:
         return traduire_deepl_chunk(texte, deepl_key)
     else:
-        return traduire_gemini_chunk(texte, g_key)
+        return traduire_avec_fallback(texte)
 
 
 def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
@@ -440,26 +469,23 @@ def traduire_mots_cles_gemini(mots_cles_fr: str, g_key: str) -> str:
 
         prompt = f"""Tu es un expert en terminologie médicale. Traduis ces mots-clés français en termes médicaux anglais optimisés pour PubMed.
 
-def traduire_claude(texte: str) -> str:
-    """Traduction FR via Claude (fallback)."""
-    if not client_claude:
-        return texte
+CONSIGNES:
+- Fournis UNIQUEMENT les termes anglais
+- Utilise la terminologie MeSH quand possible
+- Sépare les termes par des virgules
 
-    try:
-        msg = client_claude.messages.create(
-            model="claude-3-sonnet-20240229",
-            max_tokens=2000,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Traduis ce texte en français médical professionnel, sans préambule :\n\n{texte}"
-                }
-            ]
-        )
-        return msg.content[0].text.strip()
-    except Exception:
-        return texte
-        
+MOTS-CLÉS FRANÇAIS:
+{mots_cles_fr}
+
+TERMES ANGLAIS:"""
+
+        resp = model.generate_content(prompt)
+        return resp.text.strip()
+    except Exception as e:
+        st.error(f"❌ Erreur traduction mots-clés: {e}")
+        return mots_cles_fr
+
+
 def resumer_claude(texte: str, mode="court") -> str:
     """Résumé FR via Claude."""
     if not client_claude:
@@ -486,12 +512,6 @@ def resumer_claude(texte: str, mode="court") -> str:
     except Exception:
         return texte
 
-def traduire_avec_fallback(texte: str) -> str:
-    """Tente Gemini, puis Claude si erreur."""
-    try:
-        return traduire_gemini_chunk(texte, G_KEY)
-    except Exception:
-        return traduire_claude(texte)
 
 def resumer_avec_fallback(texte: str, mode="court") -> str:
     """Résumé via Gemini, fallback Claude."""
@@ -517,22 +537,6 @@ def resumer_avec_fallback(texte: str, mode="court") -> str:
     except Exception:
         return resumer_claude(texte, mode=mode)
 
-
-CONSIGNES:
-- Fournis UNIQUEMENT les termes anglais
-- Utilise la terminologie MeSH quand possible
-- Sépare les termes par des virgules
-
-MOTS-CLÉS FRANÇAIS:
-{mots_cles_fr}
-
-TERMES ANGLAIS:"""
-
-        resp = model.generate_content(prompt)
-        return resp.text.strip()
-    except Exception as e:
-        st.error(f"❌ Erreur traduction mots-clés: {e}")
-        return mots_cles_fr
 
 
 # ============================================
