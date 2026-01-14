@@ -14,3 +14,4 @@ lxml>=5.1
 # Divers (recommandé pour compatibilité)
 certifi
 reportlab>=4.0
+anthropic>=0.25
